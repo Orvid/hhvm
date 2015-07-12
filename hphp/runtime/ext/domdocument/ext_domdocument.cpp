@@ -117,7 +117,7 @@ IMPLEMENT_GET_CLASS_FUNCTION(DOMImplementation)
 IMPLEMENT_GET_CLASS_FUNCTION(DOMXPath)
 
 static void php_libxml_internal_error_handler(int error_type, void *ctx,
-                                              const char *fmt,
+                      ATTRIBUTE_PRINTF_STRING const char *fmt,
                                               va_list ap) ATTRIBUTE_PRINTF(3,0);
 static void php_libxml_internal_error_handler(int error_type, void *ctx,
                                               const char *fmt,
@@ -188,7 +188,7 @@ static void php_libxml_internal_error_handler(int error_type, void *ctx,
  */
 
 static void php_libxml_ctx_error(void *ctx,
-                          const char *msg, ...) ATTRIBUTE_PRINTF(2,3);
+  ATTRIBUTE_PRINTF_STRING const char *msg, ...) ATTRIBUTE_PRINTF(2,3);
 static void php_libxml_ctx_error(void *ctx,
                           const char *msg, ...) {
   va_list args;
@@ -200,7 +200,7 @@ static void php_libxml_ctx_error(void *ctx,
 }
 
 static void php_libxml_ctx_warning(void *ctx,
-                            const char *msg, ...) ATTRIBUTE_PRINTF(2,3);
+    ATTRIBUTE_PRINTF_STRING const char *msg, ...) ATTRIBUTE_PRINTF(2,3);
 static void php_libxml_ctx_warning(void *ctx,
                             const char *msg, ...) {
   va_list args;

@@ -17,6 +17,7 @@
 #define incl_HPHP_PORTABILITY_H_
 
 #include <folly/Likely.h> // defining LIKELY/UNLIKELY is part of this header
+#include <folly/Portability.h>
 #include <folly/CPortability.h> // defining FOLLY_DISABLE_ADDRESS_SANITIZER
 
 //////////////////////////////////////////////////////////////////////
@@ -49,6 +50,11 @@
 #ifdef ATTRIBUTE_PRINTF
 # undef ATTRIBUTE_PRINTF
 #endif
+#ifdef ATTRIBUTE_PRINTF_STRING
+# undef ATTRIBUTE_PRINTF_STRING
+#endif
+
+#define ATTRIBUTE_PRINTF_STRING FOLLY_PRINTF_FORMAT
 
 #define ATTRIBUTE_UNUSED   __attribute__((__unused__))
 #define ATTRIBUTE_NORETURN __attribute__((__noreturn__))

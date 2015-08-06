@@ -32,7 +32,7 @@ struct ArrayData;
 struct StringData;
 struct ObjectData;
 struct RefData;
-struct ResourceData;
+class ResourceData;
 struct TypedValue;
 
 //////////////////////////////////////////////////////////////////////

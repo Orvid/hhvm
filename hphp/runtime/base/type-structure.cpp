@@ -29,8 +29,8 @@
 
 namespace HPHP {
 
-struct String;
-struct StaticString;
+class String;
+class StaticString;
 
 namespace {
 

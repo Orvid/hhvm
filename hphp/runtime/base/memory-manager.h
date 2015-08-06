@@ -46,7 +46,7 @@ namespace HPHP {
 struct APCLocalArray;
 struct MemoryManager;
 struct ObjectData;
-struct ResourceData;
+class ResourceData;
 struct ExtendedException;
 
 //////////////////////////////////////////////////////////////////////

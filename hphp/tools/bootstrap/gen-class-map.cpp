@@ -179,7 +179,7 @@ static void outputConstants(const fbstring &invocation_trace,
       << "#define _H_SYSTEM_CONSTANTS\n"
       << "namespace HPHP {\n"
       << "class StaticString;\n"
-      << "class Variant;\n";
+      << "struct Variant;\n";
   declareConstants(out, consts, true);
   out << "} // namespace HPHP\n"
       << "#endif // _H_SYSTEM_CONSTANTS\n";

@@ -49,7 +49,7 @@ namespace HPHP {
 
 DECLARE_BOOST_TYPES(Statement);
 DECLARE_EXTENDED_BOOST_TYPES(Expression);
-class Variant;
+struct Variant;
 
 class Expression : public Construct {
 private:

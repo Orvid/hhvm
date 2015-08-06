@@ -25,7 +25,7 @@
 namespace HPHP {
 ///////////////////////////////////////////////////////////////////////////////
 
-class APCLocalArray;
+struct APCLocalArray;
 
 /**
  * APCArray is a php-style array that can take strings and

@@ -17,8 +17,8 @@
 #define incl_HPHP_RUNTIME_IMARKER_H_
 
 namespace HPHP {
-struct Array;
-struct String;
+class Array;
+class String;
 struct Variant;
 namespace req { template<typename T> struct ptr; }
 

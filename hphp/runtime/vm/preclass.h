@@ -44,7 +44,7 @@ struct NamedEntity;
 struct StringData;
 struct Unit;
 
-struct PreClassEmitter;
+class PreClassEmitter;
 
 namespace Native { struct NativeDataInfo; }
 

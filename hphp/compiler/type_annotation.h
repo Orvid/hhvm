@@ -30,9 +30,9 @@
 namespace HPHP {
 ///////////////////////////////////////////////////////////////////////////////
 
-class CodeGenerator;
+struct CodeGenerator;
 
-struct Array;
+class Array;
 struct ArrayData;
 
 DECLARE_BOOST_TYPES(TypeAnnotation);

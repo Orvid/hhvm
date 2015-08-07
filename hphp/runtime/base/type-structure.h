@@ -22,7 +22,7 @@
 
 namespace HPHP {
 
-struct String;
+class String;
 struct ArrayData;
 
 /* Utility for representing full type information in the runtime. */

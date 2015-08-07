@@ -35,7 +35,7 @@ namespace HPHP {
 
 //////////////////////////////////////////////////////////////////////
 
-class APCString;
+struct APCString;
 class Array;
 class String;
 
@@ -71,7 +71,7 @@ enum CopyStringMode { CopyString };
  *   Shared |        |          |    X
  */
 struct StringData {
-  friend class APCString;
+  friend struct APCString;
   friend StringData* allocFlatSmallImpl(size_t len);
   friend StringData* allocFlatSlowImpl(size_t len);
 

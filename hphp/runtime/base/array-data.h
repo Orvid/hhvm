@@ -24,7 +24,6 @@
 
 #include "hphp/runtime/base/memory-manager.h"
 #include "hphp/runtime/base/countable.h"
-#include "hphp/runtime/base/types.h"
 #include "hphp/runtime/base/typed-value.h"
 #include "hphp/runtime/base/sort-flags.h"
 #include "hphp/runtime/base/cap-code.h"
@@ -34,6 +33,8 @@ namespace HPHP {
 ///////////////////////////////////////////////////////////////////////////////
 
 struct TypedValue;
+struct MArrayIter;
+class VariableSerializer;
 
 struct ArrayData {
   // Runtime type tag of possible array types.  This is intentionally
@@ -64,13 +65,12 @@ protected:
    * NOTE: MixedArray no longer calls this constructor.  If you change
    * it, change the MixedArray::Make functions as appropriate.
    */
-  explicit ArrayData(ArrayKind kind)
+  explicit ArrayData(ArrayKind kind, RefCount initial_count = 1)
     : m_sizeAndPos(uint32_t(-1)) {
-    m_hdr.init(static_cast<HeaderKind>(kind), 1);
+    m_hdr.init(static_cast<HeaderKind>(kind), initial_count);
     assert(m_size == -1);
     assert(m_pos == 0);
     assert(m_hdr.kind == static_cast<HeaderKind>(kind));
-    assert(hasExactlyOneRef());
   }
 
   /*

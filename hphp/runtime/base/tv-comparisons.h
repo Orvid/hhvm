@@ -17,9 +17,10 @@
 #define incl_HPHP_TV_COMPARISONS_H_
 
 #include "hphp/runtime/base/typed-value.h"
-#include "hphp/runtime/base/types.h"
 
 namespace HPHP {
+
+struct ResourceData;
 
 //////////////////////////////////////////////////////////////////////
 // Php's operator ===

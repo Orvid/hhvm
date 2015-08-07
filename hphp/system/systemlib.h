@@ -21,10 +21,11 @@
 #include "hphp/util/portability.h"
 
 namespace HPHP {
-struct ObjectData;
-struct Unit;
-struct Class;
-struct Func;
+class ObjectData;
+class Unit;
+class Class;
+class Func;
+class Object;
 } //namespace HPHP
 
 namespace HPHP { namespace SystemLib {

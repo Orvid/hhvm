@@ -18,10 +18,7 @@
 #define incl_HPHP_TYPES_H_
 
 #include <cstdint>
-#include <limits>
-
 #include "hphp/util/low-ptr.h"
-#include "hphp/runtime/base/header-kind.h"
 
 namespace HPHP {
 ///////////////////////////////////////////////////////////////////////////////
@@ -29,11 +26,8 @@ namespace HPHP {
 class String;
 class StaticString;
 class Array;
-class Object;
-class Resource;
-struct Variant;
+class Variant;
 class VarNR;
-struct RefData;
 
 extern const Variant null_variant;      // uninitialized variant
 extern const Variant init_null_variant; // php null
@@ -54,17 +48,7 @@ extern const StaticString array_string; // String("Array")
 extern const StaticString empty_string_ref; // const StaticString&
 extern const Variant empty_string_variant_ref; // const Variant&
 
-struct StringData;
-struct ArrayData;
-struct ObjectData;
-class ResourceData;
-struct MArrayIter;
-
-struct Class;
-struct Func;
-
-struct VariableUnserializer;
-
+class StringData;
 using LowStringPtr = LowPtr<const StringData>;
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -107,9 +91,6 @@ struct AccessFlags {
   static Type IsKey(bool s) { return s ? Key : None; }
   static Type IsError(bool e) { return e ? Error : None; }
 };
-
-#define ACCESSPARAMS_DECL AccessFlags::Type flags = AccessFlags::None
-#define ACCESSPARAMS_IMPL AccessFlags::Type flags
 
 /*
  * Program counters in the bytecode interpreter.
@@ -167,15 +148,6 @@ constexpr Offset kInvalidOffset = std::numeric_limits<Offset>::max();
  */
 using Slot = uint32_t;
 constexpr Slot kInvalidSlot = -1;
-
-/*
- * Handles into Request Data Segment.  These are offsets from
- * rds::tl_base.  See rds.h.
- */
-namespace rds {
-  using Handle = uint32_t;
-  constexpr Handle kInvalidHandle = 0;
-}
 
 /*
  * Unique identifier for a Func*.

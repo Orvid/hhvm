@@ -6,10 +6,22 @@ set(CXX_SOURCES)
 auto_sources(files "*.cpp" "RECURSE" "${CMAKE_CURRENT_SOURCE_DIR}")
 list(APPEND CXX_SOURCES ${files})
 
-set(HEADER_SOURCES)
 auto_sources(files "*.h" "RECURSE")
 list(APPEND HEADER_SOURCES ${files})
 HHVM_PUBLIC_HEADERS(zend ${files})
+
+if (NOT MSVC)
+  list(REMOVE_ITEM C_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/crypt-freesec.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/crypt-sha256.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/crypt-sha512.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/php-crypt_r.c
+  )
+  list(REMOVE_ITEM HEADER_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/crypt-freesec.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/php-crypt_r.h
+  )
+endif()
 
 add_library(hphp_zend STATIC ${C_SOURCES} ${CXX_SOURCES} ${HEADER_SOURCES})
 auto_source_group("hphp_zend" "${CMAKE_CURRENT_SOURCE_DIR}"

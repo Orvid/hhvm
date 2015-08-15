@@ -46,6 +46,8 @@ add_custom_command(
 #endif()
 
 if(MSVC)
+  list(REMOVE_ITEM CXX_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/afdt-util.cpp")
+  list(REMOVE_ITEM HEADER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/afdt-util.h")
   list(REMOVE_ITEM CXX_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/light-process.cpp")
   list(REMOVE_ITEM HEADER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/light-process.h")
 endif()

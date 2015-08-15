@@ -287,6 +287,14 @@ bool supportsGVN(const IRInstruction* inst) {
   case NeqBool:
   case SameObj:
   case NSameObj:
+  case SameArr:
+  case NSameArr:
+  case GtRes:
+  case GteRes:
+  case LtRes:
+  case LteRes:
+  case EqRes:
+  case NeqRes:
   case InstanceOf:
   case InstanceOfIface:
   case InstanceOfIfaceVtable:
@@ -332,7 +340,6 @@ bool supportsGVN(const IRInstruction* inst) {
   case LdMIStateAddr:
   case LdPackedArrayElemAddr:
   case OrdStr:
-  case DefLabel:
   case CheckRange:
   case CountArrayFast:
     return true;

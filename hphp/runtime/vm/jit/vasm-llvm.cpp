@@ -24,6 +24,7 @@
 
 #include "hphp/runtime/vm/jit/abi.h"
 #include "hphp/runtime/vm/jit/abi-x64.h"
+#include "hphp/runtime/vm/jit/align-x64.h"
 #include "hphp/runtime/vm/jit/back-end-x64.h"
 #include "hphp/runtime/vm/jit/code-gen-x64.h"
 #include "hphp/runtime/vm/jit/ir-instruction.h"
@@ -31,6 +32,7 @@
 #include "hphp/runtime/vm/jit/llvm-stack-maps.h"
 #include "hphp/runtime/vm/jit/mc-generator.h"
 #include "hphp/runtime/vm/jit/service-requests.h"
+#include "hphp/runtime/vm/jit/smashable-instr.h"
 #include "hphp/runtime/vm/jit/timer.h"
 #include "hphp/runtime/vm/jit/translator-inline.h"
 #include "hphp/runtime/vm/jit/unwind-x64.h"
@@ -908,14 +910,49 @@ struct LLVMEmitter {
     }
   }
 
+  /*
+   * A REQ_BIND_JMP service request passes an address of a jump that can be
+   * patched.  This function lets you change this jump address for an existing
+   * REQ_BIND_JMP stub to `newJmpIp'.  The caller must indicate whether the
+   * stub was created with a target SrcKey that is a resumed function.
+   *
+   * Pre: the `stub' must be a REQ_BIND_JMP stub.
+   */
+  static void adjustBindJmpPatchableJmpAddress(TCA addr,
+                                               bool targetIsResumed,
+                                               TCA newJmpIp) {
+    assert_not_implemented(arch() == Arch::X64);
+
+    // We rely on emitServiceReqWork putting an optional lea for the SP offset
+    // first (depending on whether the target SrcKey is a resumed function),
+    // followed by an RIP relative lea of the jump address.
+    if (!targetIsResumed) {
+      DecodedInstruction instr(addr);
+      addr += instr.size();
+    }
+    auto const leaIp = addr;
+    always_assert((leaIp[0] & 0x48) == 0x48); // REX.W
+    always_assert(leaIp[1] == 0x8d); // lea
+
+    // NB: This is x64-specific.
+    constexpr int kRipLeaLen = 7;
+    auto const afterLea = leaIp + kRipLeaLen;
+    auto const delta = safe_cast<int32_t>(newJmpIp - afterLea);
+    std::memcpy(afterLea - sizeof(delta), &delta, sizeof(delta));
+  }
+
   void processSvcReqs(const LocRecs& locRecs) {
     for (auto& req : m_bindjmps) {
       bool found = false;
       auto doBindJmp = [&] (uint8_t* jmpIp, ConditionCode cc) {
         FTRACE(2, "Processing bindjmp at {}, stub {}\n", jmpIp, req.stub);
 
-        auto jmpLen = (cc == CC_None) ? x64::kJmpLen : x64::kJccLen;
-        mcg->cgFixups().m_alignFixups.emplace(jmpIp, std::make_pair(jmpLen, 0));
+        auto const alignment = cc == CC_None ? Alignment::SmashJmp
+                                             : Alignment::SmashJcc;
+        mcg->cgFixups().m_alignFixups.emplace(
+          jmpIp,
+          std::make_pair(alignment, AlignContext::Live)
+        );
         mcg->setJmpTransID(jmpIp);
 
         if (found) {
@@ -938,6 +975,8 @@ struct LLVMEmitter {
                  jmpIp, newStub);
 
           // Patch the jmp to point to the new stub.
+          auto const jmpLen = cc == CC_None ? smashableJmpLen()
+                                            : smashableJccLen();
           auto afterJmp = jmpIp + jmpLen;
           auto delta = safe_cast<int32_t>(newStub - afterJmp);
           memcpy(afterJmp - sizeof(delta), &delta, sizeof(delta));

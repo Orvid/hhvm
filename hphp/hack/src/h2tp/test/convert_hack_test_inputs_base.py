@@ -127,7 +127,12 @@ UNSUPPORTED_FILES_UNPARSER = {
     "TypeConst": [
         'tconst/*.php',
         'classname/with_tconst*.php',
+        'type_structure/*.php',
+        'constraints/class_type_constant*.php',
     ],
+    "Memoize": [
+        'memoize/*.php',
+    ]
 }
 
 UNSUPPORTED_FILES_CONVERTER = {
@@ -345,6 +350,7 @@ INTERNAL_ERRORS = {
 }
 
 OTHER_UNPARSEABLE_FILES = [
+    'abstract_final_classname.php',
     'capitalization2.php',
     'capitalization4.php',
     'class_abstract_final_1.php',
@@ -357,6 +363,7 @@ OTHER_UNPARSEABLE_FILES = [
     'class_abstract_final_7.php',
     'class_abstract_final_5.php',
     'class_abstract_final_9.php',
+    'classname/new_abstract_final.php',
     'concat_untyped_with_string.php',
     'covariance7.php',
     'covariance8.php',
@@ -411,6 +418,7 @@ OTHER_UNPARSEABLE_FILES = [
     'unsafeexpr2.php',
     'unsafeexpr3.php',
     'variadic_args1.php',
+    'constraints/tapply_is_newtype.php',
 ]
 
 UNPARSEABLE_OUTPUT = set([

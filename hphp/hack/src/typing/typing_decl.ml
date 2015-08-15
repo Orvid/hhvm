@@ -661,7 +661,8 @@ and class_const_decl c (env, acc) (h, id, e) =
 and class_class_decl class_id =
   let pos, name = class_id in
   let reason = Reason.Rclass_class (pos, name) in
-  let classname_ty = (reason, Tprim (Tclassname name)) in
+  let classname_ty =
+    reason, Tapply ((pos, SN.Classes.cClassname), [reason, Tthis]) in
   {
     ce_final       = false;
     ce_is_xhp_attr = false;
@@ -832,11 +833,7 @@ let rec type_typedef_decl_if_missing nenv typedef =
 
 and type_typedef_naming_and_decl nenv tdef =
   let pos, tid = tdef.Ast.t_id in
-  let is_abstract =
-    match tdef.Ast.t_kind with
-    | Ast.Alias _ -> false
-    | Ast.NewType _ -> true
-  in let {
+  let {
     t_tparams = params;
     t_constraint = tcstr;
     t_kind = concrete_type;
@@ -858,9 +855,9 @@ and type_typedef_naming_and_decl nenv tdef =
       let env = sub_type env constraint_type concrete_type in
       env, Some constraint_type
   in
-  let visibility = if is_abstract
-    then Typing_heap.Typedef.Private
-    else Typing_heap.Typedef.Public in
+  let visibility = match tdef.Ast.t_kind with
+    | Ast.Alias _ -> Typing_heap.Typedef.Public
+    | Ast.NewType _ -> Typing_heap.Typedef.Private in
   let tdecl = visibility, params, tcstr, concrete_type, pos in
   Env.add_typedef tid tdecl;
   Naming_heap.TypedefHeap.add tid decl;

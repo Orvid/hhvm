@@ -26,6 +26,7 @@
 #include "hphp/runtime/vm/jit/print.h"
 #include "hphp/runtime/vm/jit/prof-data.h"
 #include "hphp/runtime/vm/jit/service-requests.h"
+#include "hphp/runtime/vm/jit/smashable-instr-x64.h"
 #include "hphp/runtime/vm/jit/target-cache.h"
 #include "hphp/runtime/vm/jit/timer.h"
 #include "hphp/runtime/vm/jit/vasm.h"
@@ -37,6 +38,7 @@
 #include "hphp/runtime/vm/jit/vasm-visit.h"
 
 #include <algorithm>
+#include <tuple>
 
 TRACE_SET_MOD(vasm);
 
@@ -61,7 +63,6 @@ struct Vgen {
     , jmps(env.jmps)
     , jccs(env.jccs)
     , catches(env.catches)
-    , stubs(env.stubs)
   {}
 
   static void patch(Venv& env);
@@ -74,16 +75,8 @@ struct Vgen {
                        vinst_names[Vinstr(i).op], size_t(current));
   }
 
-  // service requests
-  void emit(const bindcall& i);
-  void emit(const bindjmp& i);
-  void emit(const bindjcc& i);
-  void emit(const bindjcc1st& i);
-  void emit(const bindaddr& i);
-  void emit(const fallback& i);
-  void emit(const fallbackcc& i);
-
   // intrinsics
+  void emit(const bindcall& i);
   void emit(const copy& i);
   void emit(const copy2& i);
   void emit(const debugtrap& i) { a->int3(); }
@@ -194,7 +187,6 @@ struct Vgen {
   void emit(psllq i) { binary(i); a->psllq(i.s0, i.d); }
   void emit(psrlq i) { binary(i); a->psrlq(i.s0, i.d); }
   void emit(const push& i) { a->push(i.s); }
-  void emit(const retransopt& i);
   void emit(const roundsd& i) { a->roundsd(i.dir, i.s, i.d); }
   void emit(const ret& i) { a->ret(); }
   void emit(const sarq& i) { unary(i); a->sarq(i.d); }
@@ -266,7 +258,6 @@ private:
   jit::vector<Venv::LabelPatch>& jmps;
   jit::vector<Venv::LabelPatch>& jccs;
   jit::vector<Venv::LabelPatch>& catches;
-  jit::vector<Venv::SvcReqPatch>& stubs;
 };
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -326,76 +317,9 @@ void Vgen::pad(CodeBlock& cb) {
 ///////////////////////////////////////////////////////////////////////////////
 
 void Vgen::emit(const bindcall& i) {
-  mcg->backEnd().prepareForSmash(a->code(), kCallLen);
-  a->call(i.stub);
+  emitSmashableCall(a->code(), i.stub);
   emit(unwind{{i.targets[0], i.targets[1]}});
 }
-
-void Vgen::emit(const bindjmp& i) {
-  mcg->backEnd().prepareForSmash(a->code(), kJmpLen);
-  auto const jmp_addr = a->frontier();
-  mcg->backEnd().emitSmashableJump(a->code(), a->frontier(), CC_None);
-
-  stubs.push_back({jmp_addr, nullptr, i});
-  mcg->setJmpTransID(jmp_addr);
-}
-
-void Vgen::emit(const bindjcc& i) {
-  mcg->backEnd().prepareForSmash(a->code(), kJccLen);
-  auto const jcc_addr = a->frontier();
-  mcg->backEnd().emitSmashableJump(a->code(), jcc_addr, i.cc);
-
-  stubs.push_back({nullptr, jcc_addr, i});
-  mcg->setJmpTransID(jcc_addr);
-}
-
-void Vgen::emit(const bindjcc1st& i) {
-  mcg->backEnd().prepareForTestAndSmash(a->code(), 0,
-                                        TestAndSmashFlags::kAlignJccAndJmp);
-  auto const jcc_addr = a->frontier();
-  mcg->backEnd().emitSmashableJump(a->code(), jcc_addr, i.cc);
-  auto const jmp_addr = a->frontier();
-  mcg->backEnd().emitSmashableJump(a->code(), jcc_addr, CC_None);
-
-  stubs.push_back({jmp_addr, jcc_addr, i});
-
-  mcg->setJmpTransID(jmp_addr);
-  mcg->setJmpTransID(jcc_addr);
-}
-
-void Vgen::emit(const bindaddr& i) {
-  stubs.push_back({nullptr, nullptr, i});
-  mcg->setJmpTransID(TCA(i.addr));
-  mcg->cgFixups().m_codePointers.insert(i.addr);
-}
-
-void Vgen::emit(const fallback& i) {
-  mcg->backEnd().prepareForSmash(a->code(), kJmpLen);
-  auto const jmp_addr = a->frontier();
-  mcg->backEnd().emitSmashableJump(a->code(), a->frontier(), CC_None);
-
-  stubs.push_back({jmp_addr, nullptr, i});
-
-  auto const srcrec = mcg->tx().getSrcRec(i.target);
-  srcrec->registerFallbackJump(jmp_addr, CC_None);
-}
-
-void Vgen::emit(const fallbackcc& i) {
-  mcg->backEnd().prepareForSmash(a->code(), kJccLen);
-  auto const jcc_addr = a->frontier();
-  mcg->backEnd().emitSmashableJump(a->code(), jcc_addr, i.cc);
-
-  stubs.push_back({nullptr, jcc_addr, i});
-
-  auto const srcrec = mcg->tx().getSrcRec(i.target);
-  srcrec->registerFallbackJump(jcc_addr, i.cc);
-}
-
-void Vgen::emit(const retransopt& i) {
-  svcreq::emit_retranslate_opt_stub(a->code(), i.spOff, i.target, i.transID);
-}
-
-///////////////////////////////////////////////////////////////////////////////
 
 void Vgen::emit(const copy& i) {
   if (i.s == i.d) return;
@@ -485,11 +409,7 @@ void Vgen::emit(const ldimmq& i) {
 }
 
 void Vgen::emit(const ldimmqs& i) {
-  mcg->backEnd().prepareForSmash(a->code(), kMovLen);
-  a->movq(0xdeadbeeffeedface, i.d);
-
-  auto immp = reinterpret_cast<uintptr_t*>(a->frontier()) - 1;
-  *immp = i.s.q();
+  emitSmashableMovq(a->code(), i.s.q(), i.d);
 }
 
 void Vgen::emit(const load& i) {
@@ -547,18 +467,15 @@ void Vgen::emit(const mcprep& i) {
    * Class*, so we'll always miss the inline check before it's smashed, and
    * handlePrimeCacheInit can tell it's not been smashed yet
    */
-  emit(ldimmqs{0x8000000000000000u, i.d});
+  auto const mov_addr = emitSmashableMovq(a->code(), 0, r64(i.d));
+  auto const imm = reinterpret_cast<uint64_t>(mov_addr);
+  smashMovq(mov_addr, (imm << 1) | 1);
 
-  auto movAddr = reinterpret_cast<uintptr_t>(a->frontier()) - x64::kMovLen;
-  auto immAddr = reinterpret_cast<uintptr_t*>(movAddr + x64::kMovImmOff);
-
-  *immAddr = (movAddr << 1) | 1;
-  mcg->cgFixups().m_addressImmediates.insert(reinterpret_cast<TCA>(~movAddr));
+  mcg->cgFixups().m_addressImmediates.insert(reinterpret_cast<TCA>(~imm));
 }
 
 void Vgen::emit(const mccall& i) {
-  mcg->backEnd().prepareForSmash(a->code(), kCallLen);
-  a->call(i.target);
+  emitSmashableCall(a->code(), i.target);
 }
 
 void Vgen::emit(const vret& i) {

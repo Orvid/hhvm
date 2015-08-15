@@ -18,6 +18,7 @@
 #define incl_HPHP_JIT_FUNC_GUARD_X64_H
 
 #include "hphp/runtime/vm/jit/types.h"
+#include "hphp/runtime/vm/jit/align-x64.h"
 #include "hphp/runtime/vm/jit/code-gen-x64.h"
 #include "hphp/runtime/vm/jit/mc-generator.h"
 #include "hphp/runtime/vm/jit/translator.h"
@@ -45,18 +46,15 @@ namespace jit { namespace x64 {
  *
  * kFuncGuardLen:   Size of the guard.
  * kFuncGuardImm:   Offset of the smashable immediate.
- * kFuncGuardSmash: Number of initial bytes that must be smashable.
  *
  * These come in regular and short versions---the latter are used for Func*'s
  * which fit into a signed 32-bit immediate.
  */
 constexpr auto kFuncGuardLen = 20;
 constexpr auto kFuncGuardImm = 2;
-constexpr auto kFuncGuardSmash = 10;  // mov $func, %rax
 
 constexpr auto kFuncGuardShortLen = 14;
 constexpr auto kFuncGuardShortImm = 4;
-constexpr auto kFuncGuardShortSmash = 8;  // cmp $func, 0x10(%rbp)
 
 ///////////////////////////////////////////////////////////////////////////////
 

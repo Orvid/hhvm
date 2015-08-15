@@ -63,13 +63,17 @@
  *   - line number information. (It might make sense to do this via
  *     something like a .line directive at some point.)
  *
- *   - non-top functions and non-hoistable classes
+ *   - non-top functions
  *
  *   - static variables in a function/method
  *
  *   - builtinType (for native funcs) field on ParamInfo
  *
  *   - type aliases
+ *
+ *   - while class/function names can contains ':', '$', and ';',
+ *     .use declarations can't handle those names because of syntax
+ *     conflicts
  *
  * @author Jordan DeLong <delong.j@fb.com>
  */
@@ -177,7 +181,14 @@ struct Input {
     consumePred(is_bareword(), std::back_inserter(word));
     return !word.empty();
   }
-
+  // Skips whitespace, then populates name with valid extname
+  // characters.  Returns true if we read any characters into name.
+  bool readname(std::string& name) {
+    name.clear();
+    skipWhitespace();
+    consumePred(is_extname(), std::back_inserter(name));
+    return !name.empty();
+  }
   // Try to consume a bareword.  Skips whitespace.  If we can't
   // consume the specified word, returns false.
   bool tryConsume(const std::string& what) {
@@ -368,6 +379,15 @@ private:
       return isalnum(i) || i == '_' || i == '.' || i == '$' || i == '\\';
     }
   };
+  // whether a character is a valid part of the extended sorts of
+  // names that HHVM uses for certain generated constructs
+  // (closures, __Memoize implementations, etc)
+  struct is_extname {
+    bool operator()(int i) const {
+      is_bareword is_bw;
+      return is_bw(i) || i == ':' || i == ';' || i == '#';
+    }
+  };
 
   void error(const std::string& what) {
     throw Error(getLineNumber(), what);
@@ -490,6 +510,7 @@ struct AsmState : private boost::noncopyable {
     , stackHighWater(0)
     , fdescDepth(0)
     , fdescHighWater(0)
+    , maxUnnamed(-1)
   {
     currentStackDepth->setBase(*this, 0);
   }
@@ -637,6 +658,7 @@ struct AsmState : private boost::noncopyable {
 
   void finishClass() {
     assert(!fe);
+    ue->addPreClassEmitter(pce);
     pce = 0;
   }
 
@@ -698,6 +720,12 @@ struct AsmState : private boost::noncopyable {
     // Stack depth should be 0 at the end of a function body
     enforceStackDepth(0);
 
+    // Bump up the unnamed local count
+    int numLocals = maxUnnamed+1;
+    while (fe->numLocals() < numLocals) {
+      fe->allocUnnamedLocal();
+    }
+
     fe->maxStackCells = fe->numLocals() +
                         fe->numIterators() * kNumIterCells +
                         stackHighWater +
@@ -715,12 +743,19 @@ struct AsmState : private boost::noncopyable {
     stackHighWater = 0;
     fdescDepth = 0;
     fdescHighWater = 0;
+    maxUnnamed = -1;
     fpiToUpdate.clear();
   }
 
   int getLocalId(const std::string& name) {
+    if (name[0] == '_') {
+      int id = folly::to<int>(name.substr(1));
+      if (id > maxUnnamed) maxUnnamed = id;
+      return id;
+    }
+
     if (name[0] != '$') {
-      error("local variables must be prefixed with $");
+      error("local variables must be prefixed with $ or _");
     }
 
     const StringData* sd = makeStaticString(name.c_str() + 1);
@@ -756,7 +791,9 @@ struct AsmState : private boost::noncopyable {
   int stackHighWater;
   int fdescDepth;
   int fdescHighWater;
+  int maxUnnamed;
   std::vector<std::pair<size_t, StackDepth*>> fpiToUpdate;
+  std::set<std::string,stdltistr> hoistables;
 };
 
 
@@ -1439,6 +1476,22 @@ void parse_numiters(AsmState& as) {
   as.in.expectWs(';');
 }
 
+/*
+ * directive-declvars : var-name* ';'
+ *                    ;
+ *
+ * Variables are usually allocated when first seen, but
+ * declvars can be used to preallocate varibles for when
+ * the exact assignment matters (like for closures).
+ */
+void parse_declvars(AsmState& as) {
+  std::string var;
+  while (as.in.readword(var)) {
+    as.getLocalId(var);
+  }
+  as.in.expectWs(';');
+}
+
 void parse_function_body(AsmState&, int nestLevel = 0);
 
 /*
@@ -1521,6 +1574,7 @@ void parse_catch(AsmState& as, int nestLevel) {
  *               ;
  *
  * fbody-line :  ".numiters" directive-numiters
+ *            |  ".declvars" directive-declvars
  *            |  ".try_fault" directive-fault
  *            |  ".try_catch" directive-catch
  *            |  label-name
@@ -1550,6 +1604,7 @@ void parse_function_body(AsmState& as, int nestLevel /* = 0 */) {
     }
     if (word[0] == '.') {
       if (word == ".numiters")  { parse_numiters(as); continue; }
+      if (word == ".declvars")  { parse_declvars(as); continue; }
       if (word == ".try_fault") { parse_fault(as, nestLevel); continue; }
       if (word == ".try_catch") { parse_catch(as, nestLevel); continue; }
       as.error("unrecognized directive `" + word + "' in function");
@@ -1577,14 +1632,40 @@ void parse_function_body(AsmState& as, int nestLevel /* = 0 */) {
   }
 }
 
+void parse_user_attribute(AsmState& as,
+                          UserAttributeMap& userAttrs) {
+  auto name = read_litstr(as);
+  as.in.expectWs('(');
+
+  TypedValue tvInit;
+  tvWriteNull(&tvInit); // Don't confuse Variant with uninit data
+  tvAsVariant(&tvInit) = parse_php_serialized(as);
+
+  as.in.expectWs(')');
+
+  if (!isArrayType(tvInit.m_type)) {
+    as.error("user attribute values must be arrays");
+  }
+
+  tvInit = make_tv<KindOfArray>(ArrayData::GetScalarArray(tvInit.m_data.parr));
+  userAttrs[name] = tvInit;
+}
+
 /*
+ * attribute : attribute-name
+ *           | string-literal '(' long-string-literal ')'
+ *           ;
+ *
  * attribute-list : empty
- *                | '[' attribute-name* ']'
+ *                | '[' attribute* ']'
  *                ;
  *
  * The `attribute-name' rule is context-sensitive; see as-shared.cpp.
+ * The second attribute form is for user attributes and only applies
+ * if attributeMap is non null.
  */
-Attr parse_attribute_list(AsmState& as, AttrContext ctx) {
+Attr parse_attribute_list(AsmState& as, AttrContext ctx,
+                          UserAttributeMap *userAttrs = nullptr) {
   as.in.skipWhitespace();
   int ret = AttrNone;
   if (ctx == AttrContext::Class || ctx == AttrContext::Func) {
@@ -1599,6 +1680,10 @@ Attr parse_attribute_list(AsmState& as, AttrContext ctx) {
   for (;;) {
     as.in.skipWhitespace();
     if (as.in.peek() == ']') break;
+    if (as.in.peek() == '"' && userAttrs) {
+      parse_user_attribute(as, *userAttrs);
+      continue;
+    }
     if (!as.in.readword(word)) break;
 
     auto const abit = string_to_attr(ctx, word);
@@ -1788,10 +1873,11 @@ void parse_function(AsmState& as) {
     as.error(".function blocks must all follow the .main block");
   }
 
-  Attr attrs = parse_attribute_list(as, AttrContext::Func);
+  UserAttributeMap userAttrs;
+  Attr attrs = parse_attribute_list(as, AttrContext::Func, &userAttrs);
   auto typeInfo = parse_type_info(as);
   std::string name;
-  if (!as.in.readword(name)) {
+  if (!as.in.readname(name)) {
     as.error(".function must have a name");
   }
 
@@ -1799,6 +1885,7 @@ void parse_function(AsmState& as) {
   as.fe->init(as.in.getLineNumber(), as.in.getLineNumber() + 1 /* XXX */,
               as.ue->bcPos(), attrs, true, 0);
   std::tie(as.fe->retUserType, as.fe->retTypeConstraint) = typeInfo;
+  as.fe->userAttributes = userAttrs;
 
   parse_parameter_list(as);
   parse_function_flags(as);
@@ -1816,10 +1903,11 @@ void parse_function(AsmState& as) {
 void parse_method(AsmState& as) {
   as.in.skipWhitespace();
 
-  Attr attrs = parse_attribute_list(as, AttrContext::Func);
+  UserAttributeMap userAttrs;
+  Attr attrs = parse_attribute_list(as, AttrContext::Func, &userAttrs);
   auto typeInfo = parse_type_info(as);
   std::string name;
-  if (!as.in.readword(name)) {
+  if (!as.in.readname(name)) {
     as.error(".method requires a method name");
   }
 
@@ -1828,6 +1916,7 @@ void parse_method(AsmState& as) {
   as.fe->init(as.in.getLineNumber(), as.in.getLineNumber() + 1 /* XXX */,
               as.ue->bcPos(), attrs, true, 0);
   std::tie(as.fe->retUserType, as.fe->retTypeConstraint) = typeInfo;
+  as.fe->userAttributes = userAttrs;
 
   parse_parameter_list(as);
   parse_function_flags(as);
@@ -1924,8 +2013,7 @@ void parse_constant(AsmState& as) {
   as.pce->addConstant(makeStaticString(name),
                       staticEmptyString(), &tvInit,
                       staticEmptyString(),
-                      /* type constant = */ false,
-                      /* type structure = */ nullptr);
+                      /* type constant = */ false);
 }
 
 /*
@@ -2076,7 +2164,32 @@ void parse_class_body(AsmState& as) {
     as.error("unrecognized directive `" + directive + "' in class");
   }
   as.in.expect('}');
-  as.finishClass();
+}
+
+PreClass::Hoistable compute_hoistable(AsmState& as,
+                                      const std::string &name,
+                                      const std::string &parentName) {
+  auto &pce = *as.pce;
+  bool system = pce.attrs() & AttrBuiltin;
+
+  if (pce.methods().size() == 1 && pce.methods()[0]->isClosureBody) {
+    return PreClass::ClosureHoistable;
+  }
+  if (!system) {
+    if (!pce.interfaces().empty() ||
+        !pce.usedTraits().empty() ||
+        !pce.requirements().empty() ||
+        (pce.attrs() & AttrEnum)) {
+      return PreClass::Mergeable;
+    }
+    if (!parentName.empty() && !as.hoistables.count(parentName)) {
+      return PreClass::MaybeHoistable;
+    }
+  }
+  as.hoistables.insert(name);
+
+  return pce.attrs() & AttrUnique ?
+    PreClass::AlwaysHoistable : PreClass::MaybeHoistable;
 }
 
 /*
@@ -2096,15 +2209,16 @@ void parse_class_body(AsmState& as) {
 void parse_class(AsmState& as) {
   as.in.skipWhitespace();
 
-  Attr attrs = parse_attribute_list(as, AttrContext::Class);
+  UserAttributeMap userAttrs;
+  Attr attrs = parse_attribute_list(as, AttrContext::Class, &userAttrs);
   std::string name;
-  if (!as.in.readword(name)) {
+  if (!as.in.readname(name)) {
     as.error(".class must have a name");
   }
 
   std::string parentName;
   if (as.in.tryConsume("extends")) {
-    if (!as.in.readword(parentName)) {
+    if (!as.in.readname(parentName)) {
       as.error("expected parent class name after `extends'");
     }
   }
@@ -2113,14 +2227,14 @@ void parse_class(AsmState& as) {
   if (as.in.tryConsume("implements")) {
     as.in.expectWs('(');
     std::string word;
-    while (as.in.readword(word)) {
+    while (as.in.readname(word)) {
       ifaces.push_back(word);
     }
     as.in.expect(')');
   }
 
-  as.pce = as.ue->newPreClassEmitter(makeStaticString(name),
-                                     PreClass::MaybeHoistable);
+  as.pce = as.ue->newBarePreClassEmitter(makeStaticString(name),
+                                         PreClass::MaybeHoistable);
   as.pce->init(as.in.getLineNumber(),
                as.in.getLineNumber() + 1, // XXX
                as.ue->bcPos(),
@@ -2130,9 +2244,13 @@ void parse_class(AsmState& as) {
   for (size_t i = 0; i < ifaces.size(); ++i) {
     as.pce->addInterface(makeStaticString(ifaces[i]));
   }
+  as.pce->setUserAttributes(userAttrs);
 
   as.in.expectWs('{');
   parse_class_body(as);
+
+  as.pce->setHoistable(compute_hoistable(as, name, parentName));
+  as.finishClass();
 }
 
 /*

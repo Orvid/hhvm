@@ -32,7 +32,7 @@ namespace HPHP {
 
 struct CodeGenerator;
 
-class Array;
+struct Array;
 struct ArrayData;
 
 DECLARE_BOOST_TYPES(TypeAnnotation);
@@ -223,7 +223,7 @@ public:
 
   /* returns the scalar array representation (the TypeStructure) of
    * this type annotation. */
-  ArrayData* getScalarArrayRep() const;
+  Array getScalarArrayRep() const;
 
 private:
   void functionTypeName(std::string &name) const;
@@ -233,7 +233,7 @@ private:
   void accessTypeName(std::string &name) const;
   void shapeTypeName(std::string& name) const;
   bool isPrimType(const char* str) const;
-  ArrayData* argsListToScalarArray(TypeAnnotationPtr ta) const;
+  Array argsListToScalarArray(TypeAnnotationPtr ta) const;
   void shapeFieldsToScalarArray(Array& rep, TypeAnnotationPtr ta) const;
 
 private:

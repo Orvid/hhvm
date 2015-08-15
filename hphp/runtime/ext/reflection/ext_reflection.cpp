@@ -569,7 +569,7 @@ static Array get_function_static_variables(const Func* func) {
     const Func::SVInfo &sv = staticVars[i];
     auto const refData = rds::bindStaticLocal(func, sv.name);
     // FIXME: this should not require variant hops
-    ai.setKeyUnconverted(
+    ai.setUnknownKey(
       VarNR(sv.name),
       refData->isUninitializedInRDS()
         ? null_variant
@@ -917,12 +917,12 @@ static Array HHVM_METHOD(ReflectionFunction, getClosureUseVariables,
       String strippedName(prop.m_name->data() + sizeof prefix - 1,
                           prop.m_name->size() - sizeof prefix + 1,
                           CopyString);
-      ai.setKeyUnconverted(VarNR(strippedName), *val);
+      ai.setUnknownKey(VarNR(strippedName), *val);
     } else {
       if (val->isReferenced()) {
         ai.setRef(VarNR(prop.m_name), *val, false /* = keyConverted */);
       } else {
-        ai.setKeyUnconverted(VarNR(prop.m_name), *val);
+        ai.setUnknownKey(VarNR(prop.m_name), *val);
       }
     }
   }
@@ -1450,7 +1450,7 @@ static Array HHVM_METHOD(ReflectionClass, getDynamicPropertyInfos,
   for (ArrayIter it(dynPropArray); !it.end(); it.next()) {
     Array info = Array::Create();
     set_dyn_prop_info(info, it.first(), cls->name());
-    ret.set(it.first(), VarNR(info));
+    ret.setValidKey(it.first(), VarNR(info));
   }
   return ret.toArray();
 }
@@ -1562,7 +1562,7 @@ static String HHVM_METHOD(ReflectionTypeConstant, getAssignedTypeHint) {
     assert(typeCns->isType());
     assert(!typeCns->isAbstract());
     assert(typeCns->val().m_type == KindOfArray);
-    return TypeStructure::toString(typeCns->val().m_data.parr);
+    return TypeStructure::toString(Array::attach(typeCns->val().m_data.parr));
   }
 
   return String();
@@ -1705,34 +1705,32 @@ static Array HHVM_METHOD(ReflectionTypeAlias, getTypeStructure) {
   auto const req = ReflectionTypeAliasHandle::GetTypeAliasReqFor(this_);
   assert(req);
   auto const typeStructure = req->typeStructure;
-  assert(typeStructure);
-  assert(typeStructure->isStatic());
-  return Array::attach(typeStructure);
+  assert(!typeStructure.empty());
+  return typeStructure;
 }
 
 static Array HHVM_METHOD(ReflectionTypeAlias, __getResolvedTypeStructure) {
   auto const req = ReflectionTypeAliasHandle::GetTypeAliasReqFor(this_);
   assert(req);
   auto const typeStructure = req->typeStructure;
-  assert(typeStructure);
-  ArrayData* resolved;
+  assert(!typeStructure.empty());
+  Array resolved;
   try {
-    resolved = const_cast<ArrayData*>(
-      TypeStructure::resolve(req->name, typeStructure));
+    auto name = const_cast<StringData*>(req->name.get());
+    resolved = TypeStructure::resolve(String(name), typeStructure);
   } catch (Exception &e) {
-    return Array();
+    return Array::Create();
   }
-  assert(resolved);
-  assert(resolved->isStatic());
-  return Array::attach(resolved);
+  assert(!resolved.empty());
+  return resolved;
 }
 
 static String HHVM_METHOD(ReflectionTypeAlias, getAssignedTypeText) {
   auto const req = ReflectionTypeAliasHandle::GetTypeAliasReqFor(this_);
   assert(req);
   auto const typeStructure = req->typeStructure;
-  assert(typeStructure != nullptr);
-  return String(TypeStructure::toString(typeStructure));
+  assert(!typeStructure.empty());
+  return TypeStructure::toString(typeStructure);
 }
 
 ///////////////////////////////////////////////////////////////////////////////

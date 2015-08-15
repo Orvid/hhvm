@@ -24,13 +24,13 @@
 #include "hphp/runtime/base/classname-is.h"
 #include "hphp/runtime/base/req-ptr.h"
 #include "hphp/runtime/base/memory-manager.h"
+#include "hphp/runtime/base/imarker.h"
 #include "hphp/util/thread-local.h"
 
 namespace HPHP {
 
 class Array;
 class String;
-struct IMarker;
 struct ResourceData;
 
 namespace req {
@@ -68,7 +68,7 @@ make(Args&&... args);
 struct ResourceHdr {
   static void resetMaxId();
 
-  IMPLEMENT_COUNTABLENF_METHODS_NO_STATIC
+  IMPLEMENT_COUNTABLE_METHODS_NO_STATIC
   void release() noexcept;
 
   void init(size_t size) {
@@ -233,6 +233,9 @@ protected:
     // object and deallocate its seat as well.
     delete this;
   }
+  void* owner() override {
+    return static_cast<ResourceData*>(this)->hdr();
+  }
 };
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -244,19 +247,14 @@ ALWAYS_INLINE bool decRefRes(ResourceHdr* res) {
   return res->decRefAndRelease();
 }
 
-#define RESOURCE_FRIEND(T) \
-template <typename F> friend void scan(const T& this_, F& mark);
-#define SUPPRESS_RESOURCE_FRIEND(x) x
-
 #define DECLARE_RESOURCE_ALLOCATION_NO_SWEEP(T)                 \
   public:                                                       \
-  SUPPRESS_RESOURCE_FRIEND(RESOURCE_FRIEND(T))                  \
   ALWAYS_INLINE void operator delete(void* p) {                 \
     static_assert(std::is_base_of<ResourceData,T>::value, "");  \
-    constexpr auto size = sizeof(ResourceHdr) + sizeof(T);\
-    auto h = static_cast<ResourceData*>(p)->hdr();\
-    assert(h->heapSize() == size);\
-    MM().freeSmallSize(h, size);\
+    constexpr auto size = sizeof(ResourceHdr) + sizeof(T);      \
+    auto h = static_cast<ResourceData*>(p)->hdr();              \
+    assert(h->heapSize() == size);                              \
+    MM().freeSmallSize(h, size);                                \
   }
 
 #define DECLARE_RESOURCE_ALLOCATION(T)                          \

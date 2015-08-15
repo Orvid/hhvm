@@ -201,6 +201,26 @@ bool isObjQueryOp(Opcode opc);
 Opcode queryToObjQueryOp(Opcode opc);
 
 /*
+ * Return true if opc is an array comparison operator
+ */
+bool isArrQueryOp(Opcode opc);
+
+/*
+ * Return the array-query opcode for the given non-array-query opcode
+ */
+Opcode queryToArrQueryOp(Opcode opc);
+
+/*
+ * Return true if opc is a resource comparison ooperator
+ */
+bool isResQueryOp(Opcode opc);
+
+/*
+ * Return the resource-query opcode for the give non-resource-query-opcode.
+ */
+Opcode queryToResQueryOp(Opcode opc);
+
+/*
  * Return the opcode that corresponds to negation of opc.
  */
 Opcode negateQueryOp(Opcode opc);

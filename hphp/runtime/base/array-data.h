@@ -32,6 +32,7 @@
 namespace HPHP {
 ///////////////////////////////////////////////////////////////////////////////
 
+struct String;
 struct TypedValue;
 struct MArrayIter;
 class VariableSerializer;
@@ -83,7 +84,7 @@ protected:
   ~ArrayData();
 
 public:
-  IMPLEMENT_COUNTABLE_METHODS
+  IMPLEMENT_COUNTABLE_METHODS_WITH_STATIC
 
   /**
    * Create a new ArrayData with specified array element(s).

@@ -112,7 +112,7 @@ struct ObjectData {
                       NoInit) noexcept;
 
  public:
-  IMPLEMENT_COUNTABLENF_METHODS_NO_STATIC
+  IMPLEMENT_COUNTABLE_METHODS_NO_STATIC
   template<class F> void scan(F&) const;
 
   size_t heapSize() const;
@@ -494,11 +494,10 @@ using ExtObjectData = ExtObjectDataFlags<ObjectData::IsCppBuiltin>;
 #define DECLARE_CLASS_NO_SWEEP(originalName)                           \
   public:                                                              \
   CLASSNAME_IS(#originalName)                                          \
-  template <typename F> friend void scan(const c_##originalName&, F&); \
   friend ObjectData* new_##originalName##_Instance(Class*);            \
   friend void delete_##originalName(ObjectData*, const Class*);        \
-  static HPHP::LowPtr<Class> s_classOf;                                  \
-  static inline HPHP::LowPtr<Class>& classof() {                         \
+  static HPHP::LowPtr<Class> s_classOf;                                \
+  static inline HPHP::LowPtr<Class>& classof() {                       \
     return s_classOf;                                                  \
   }
 

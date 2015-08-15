@@ -108,7 +108,6 @@ void Image::reset() {
 Image::~Image() { reset(); }
 
 struct ImageMemoryAlloc final : RequestEventHandler {
-public:
   ImageMemoryAlloc() : m_mallocSize(0) {}
 
   void requestInit() override {
@@ -277,6 +276,8 @@ public:
     n = (i < n) ? i : n;
   }
 #endif
+
+  void vscan(IMarker&) const override {}
 
 private:
   size_t m_mallocSize;
@@ -4307,6 +4308,32 @@ bool HHVM_FUNCTION(imageantialias, const Resource& image, bool on) {
   return true;
 }
 
+Variant HHVM_FUNCTION(imagescale, const Resource& image, int64_t newwidth,
+  int64_t newheight /* =-1 */, int64_t method /*=GD_BILINEAR_FIXED*/) {
+  gdImagePtr im = cast<Image>(image)->get();
+  gdImagePtr imscaled = nullptr;
+  if (!im) return false;
+  if (method == -1) method = GD_BILINEAR_FIXED;
+
+  if (newheight < 0) {
+    /* preserve ratio */
+    long src_x, src_y;
+    src_x = gdImageSX(im);
+    src_y = gdImageSY(im);
+    if (src_x) {
+      newheight = newwidth * src_y / src_x;
+    }
+  }
+  if (gdImageSetInterpolationMethod(im, (gdInterpolationMethod) method)) {
+    imscaled = gdImageScale(im, newwidth, newheight);
+  }
+  if (imscaled == nullptr) {
+    return false;
+  }
+  return Variant(req::make<Image>(imscaled));
+}
+
+
 namespace {
 
 // PHP extension STANDARD: iptc.c
@@ -8202,6 +8229,7 @@ class GdExtension final : public Extension {
     HHVM_FE(imagerectangle);
     HHVM_FE(imagerotate);
     HHVM_FE(imagesavealpha);
+    HHVM_FE(imagescale);
     HHVM_FE(imagesetbrush);
     HHVM_FE(imagesetinterpolation);
     HHVM_FE(imagesetpixel);

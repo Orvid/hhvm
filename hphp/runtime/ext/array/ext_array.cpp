@@ -177,9 +177,9 @@ Variant HHVM_FUNCTION(array_column,
     if (idx.isNull() || !sub.exists(idx)) {
       ret.append(elem);
     } else if (sub[idx].isObject()) {
-      ret.setKeyUnconverted(sub[idx].toString(), elem);
+      ret.setUnknownKey(sub[idx].toString(), elem);
     } else {
-      ret.setKeyUnconverted(sub[idx], elem);
+      ret.setUnknownKey(sub[idx], elem);
     }
   }
   return ret.toVariant();
@@ -239,12 +239,12 @@ Variant HHVM_FUNCTION(array_fill_keys,
     // This is intentionally different to the $foo[$invalid_key] coercion.
     // See tests/slow/ext_array/array_fill_keys_tostring.php for examples.
     if (LIKELY(key.isInteger() || key.isString())) {
-      ai.setKeyUnconverted(key, value);
+      ai.setUnknownKey(key, value);
     } else {
       raise_hack_strict(RuntimeOption::StrictArrayFillKeys,
                         "strict_array_fill_keys",
                         "keys must be ints or strings");
-      ai.setKeyUnconverted(key.toString(), value);
+      ai.setUnknownKey(key.toString(), value);
     }
   }
   return ai.toVariant();
@@ -288,7 +288,7 @@ Variant HHVM_FUNCTION(array_flip,
   for (ArrayIter iter(transCell); iter; ++iter) {
     const Variant& value(iter.secondRefPlus());
     if (value.isString() || value.isInteger()) {
-      ret.setKeyUnconverted(value, iter.first());
+      ret.setUnknownKey(value, iter.first());
     } else {
       raise_warning("Can only flip STRING and INTEGER values!");
     }
@@ -2345,6 +2345,7 @@ struct Collator final : RequestEventHandler {
     }
     assert(m_ucoll);
   }
+
   void requestShutdown() override {
     m_locale.reset();
     m_errcode.clearError(false);
@@ -2352,6 +2353,10 @@ struct Collator final : RequestEventHandler {
       ucol_close(m_ucoll);
       m_ucoll = NULL;
     }
+  }
+
+  void vscan(IMarker& mark) const override {
+    mark(m_locale);
   }
 
 private:

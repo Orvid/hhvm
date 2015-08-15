@@ -55,8 +55,11 @@ struct IntervalTimer final {
   void stop();
   void run();
 
+  template<class F> void scan(F& mark) const {
+    mark(m_callback);
+  }
+
 private:
-  template <typename F> friend void scan(const IntervalTimer&, F&);
   double m_interval;
   double m_initial;
   Variant m_callback;

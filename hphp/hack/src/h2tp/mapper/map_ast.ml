@@ -261,6 +261,8 @@ let mk_mapper = fun m_in ->
                 Some (map_pos_t pos, (map_of_list map_expr items))
             | None -> None)
           in XhpAttr ((v1, v2, v3, v4, v5))
+      | XhpCategory v1 ->
+        let v1 = map_of_list map_pstring v1 in XhpCategory ((v1))
       | Method v1 -> let v1 = map_method_ c_kind v1 in Method ((v1))
       | TypeConst v1 -> let v1 = map_typeconst c_kind v1 in TypeConst v1
     in m_in.k_class_elt (k, all_mappers) c_kind elt
@@ -619,7 +621,6 @@ let mk_mapper = fun m_in ->
           let v1 = map_import_flavor v1
           and v2 = map_expr v2
           in Import ((v1, v2))
-      | Ref v1 -> let v1 = map_expr v1 in Ref v1
     in m_in.k_expr_ (k, all_mappers) expr_
   and map_use (id, is_ref) =
     let id = map_id id
@@ -671,6 +672,7 @@ let mk_mapper = fun m_in ->
     | Udecr -> Udecr
     | Upincr -> Upincr
     | Updecr -> Updecr
+    | Uref -> Uref
   and map_case =
     function
     | Default v1 -> let v1 = map_block v1 in Default ((v1))

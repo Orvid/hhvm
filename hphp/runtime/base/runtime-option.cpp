@@ -415,15 +415,6 @@ static inline std::string pgoRegionSelectorDefault() {
 #endif
 }
 
-static inline bool loopsDefault() {
-#ifdef HHVM_JIT_LOOPS_BY_DEFAULT
-  return true;
-#else
-  return (RuntimeOption::EvalJitPGORegionSelector == "wholecfg" ||
-          RuntimeOption::EvalJitPGORegionSelector == "hotcfg");
-#endif
-}
-
 static inline bool hhirConstrictGuardsDefault() {
 #ifdef HHVM_CONSTRICT_GUARDS_BY_DEFAULT
   return true;
@@ -831,20 +822,27 @@ void RuntimeOption::Load(
     Config::Bind(AccessLogDefaultFormat, ini, config,
                  "Log.AccessLogDefaultFormat", "%h %l %u %t \"%r\" %>s %b");
 
-    auto parseLogs = [](Hdf root, IniSetting::Map& ini, const char* name,
-                        std::map<std::string, AccessLogFileData>& logs) {
-      for (Hdf hdf = root[name].firstChild(); hdf.exists(); hdf = hdf.next()) {
-        string logName = hdf.getName();
-        string fname = Config::GetString(ini, hdf, "File", "", false);
-        if (fname.empty()) {
-          continue;
-        }
-        string symLink = Config::GetString(ini, hdf, "SymLink", "", false);
-        string format = Config::GetString(ini, hdf, "Format",
-          AccessLogDefaultFormat, false);
+    auto parseLogs = [] (const Hdf &config, const IniSetting::Map& ini,
+                         const std::string &name,
+                         std::map<std::string, AccessLogFileData> &logs) {
+      auto parse_logs_callback = [&] (const IniSetting::Map &ini_pl,
+                                      const Hdf &hdf_pl,
+                                      const std::string &ini_pl_key) {
+        string logName = hdf_pl.exists() && !hdf_pl.isEmpty()
+                       ? hdf_pl.getName()
+                       : ini_pl_key;
+        string fname = Config::GetString(ini_pl, hdf_pl, "File", "", false);
+        if (!fname.empty()) {
+          string symlink = Config::GetString(ini_pl, hdf_pl, "SymLink", "",
+                                             false);
+          string format = Config::GetString(ini_pl, hdf_pl, "Format",
+                                            AccessLogDefaultFormat, false);
+          logs[logName] = AccessLogFileData(fname, symlink, format);
 
-        logs[logName] = AccessLogFileData(fname, symLink, format);
-      }
+
+        }
+      };
+      Config::Iterate(parse_logs_callback, ini, config, name);
     };
 
     parseLogs(config, ini, "Log.Access", AccessLogs);
@@ -885,7 +883,6 @@ void RuntimeOption::Load(
                  "ErrorHandling.WarningFrequency", 1);
   }
   {
-    Hdf rlimit = config["ResourceLimit"];
     if (Config::GetInt64(ini, config, "ResourceLimit.CoreFileSizeOverride")) {
       setResourceLimit(RLIMIT_CORE, ini,  config,
                        "ResourceLimit.CoreFileSizeOverride");
@@ -1352,28 +1349,27 @@ void RuntimeOption::Load(
 
   VirtualHost::SortAllowedDirectories(AllowedDirectories);
   {
-    if (config["VirtualHost"].exists()) {
-      for (Hdf hdf = config["VirtualHost"].firstChild(); hdf.exists();
-           hdf = hdf.next()) {
-        if (hdf.getName() == "default") {
-          VirtualHost::GetDefault().init(ini, hdf);
-          VirtualHost::GetDefault().addAllowedDirectories(AllowedDirectories);
-        } else {
-          auto host = std::make_shared<VirtualHost>(ini, hdf);
-          host->addAllowedDirectories(AllowedDirectories);
-          VirtualHosts.push_back(host);
-        }
+    auto vh_callback = [] (const IniSettingMap &ini_vh, const Hdf &hdf_vh,
+                           const std::string &ini_vh_key) {
+      if (VirtualHost::IsDefault(ini_vh, hdf_vh, ini_vh_key)) {
+        VirtualHost::GetDefault().init(ini_vh, hdf_vh, ini_vh_key);
+        VirtualHost::GetDefault().addAllowedDirectories(AllowedDirectories);
+      } else {
+        auto host = std::make_shared<VirtualHost>(ini_vh, hdf_vh, ini_vh_key);
+        host->addAllowedDirectories(AllowedDirectories);
+        VirtualHosts.push_back(host);
       }
-      for (unsigned int i = 0; i < VirtualHosts.size(); i++) {
-        if (!VirtualHosts[i]->valid()) {
-          throw std::runtime_error("virtual host missing prefix or pattern");
-        }
-      }
-    }
+    };
+    // Virtual Hosts have to be iterated in order. Because only the first
+    // one that matches in the VirtualHosts vector gets applied and used.
+    // Hdf's and ini (via Variant arrays) internal storage handles ordering
+    // naturally (as specified top to bottom in the file and left to right on
+    // the command line.
+    Config::Iterate(vh_callback, ini, config, "VirtualHost");
   }
   {
     // IpBlocks
-    IpBlocks = std::make_shared<IpBlockMap>(ini, config["IpBlockMap"]);
+    IpBlocks = std::make_shared<IpBlockMap>(ini, config);
   }
   {
     if (config["Satellites"].exists()) {

@@ -29,10 +29,10 @@ module MainInit : sig
     env
 end = struct
   let grab_init_lock root =
-    ignore(Lock.grab (GlobalConfig.init_file root))
+    ignore(Lock.grab (ServerFiles.init_file root))
 
   let release_init_lock root =
-    ignore(Lock.release (GlobalConfig.init_file root))
+    ignore(Lock.release (ServerFiles.init_file root))
 
   (* This code is only executed when the options --check is NOT present *)
   let go options init_fun =
@@ -114,7 +114,7 @@ module Program : SERVER_PROGRAM =
 
     let stamp_file = GlobalConfig.tmp_dir ^ "/stamp"
     let touch_stamp () =
-      Tmp.mkdir (Filename.dirname stamp_file);
+      Sys_utils.mkdir_no_fail (Filename.dirname stamp_file);
       Sys_utils.with_umask
         0o111
         (fun () ->
@@ -273,7 +273,10 @@ let recheck genv old_env updates =
  * rebase, and we don't log the recheck_end event until the update list
  * is no longer getting populated. *)
 let rec recheck_loop i rechecked_count genv env =
-  let raw_updates = DfindLib.get_changes (unsafe_opt genv.dfind) in
+  let raw_updates =
+    match genv.dfind with
+    | None -> SSet.empty
+    | Some dfind -> DfindLib.get_changes dfind in
   if SSet.is_empty raw_updates then
     i, rechecked_count, env
   else
@@ -290,7 +293,7 @@ let serve genv env socket =
   let root = ServerArgs.root genv.options in
   let env = ref env in
   while true do
-    let lock_file = GlobalConfig.lock_file root in
+    let lock_file = ServerFiles.lock_file root in
     if not (Lock.grab lock_file) then
       (Hh_logger.log "Lost lock; terminating.\n%!";
        HackEventLogger.lock_stolen lock_file;
@@ -418,14 +421,14 @@ let main options config =
    * someone C-c the client.
    *)
   Sys.set_signal Sys.sigpipe Sys.Signal_ignore;
-  PidLog.init (GlobalConfig.pids_file root);
+  PidLog.init (ServerFiles.pids_file root);
   PidLog.log ~reason:"main" (Unix.getpid());
   let watch_paths = root :: Program.get_watch_paths options in
   let genv = ServerEnvBuild.make_genv options config watch_paths in
   let env = ServerEnvBuild.make_env options config in
   let program_init = create_program_init genv env in
   let is_check_mode = ServerArgs.check_mode genv.options in
-  let is_ai_mode = ServerArgs.ai_mode genv.options in
+  let is_ai_mode = (ServerArgs.ai_mode genv.options) <> None in
   if is_check_mode || is_ai_mode then
     let env = program_init () in
     Option.iter (ServerArgs.save_filename genv.options) (save genv env);
@@ -433,7 +436,7 @@ let main options config =
   else
     (* Make sure to lock the lockfile before doing *anything*, especially
      * opening the socket. *)
-    if not (Lock.grab (GlobalConfig.lock_file root)) then begin
+    if not (Lock.grab (ServerFiles.lock_file root)) then begin
       Hh_logger.log "Error: another server is already running?\n";
       exit 1;
     end;
@@ -443,12 +446,14 @@ let main options config =
      * connections until init is done) so that the client can try to use the
      * socket and get blocked on it -- otherwise, trying to open a socket with
      * no server on the other end is an immediate error. *)
-    let socket = Socket.init_unix_socket (GlobalConfig.socket_file root) in
+    let socket = Socket.init_unix_socket (ServerFiles.socket_file root) in
     let env = MainInit.go options program_init in
     serve genv env socket
 
 let monitor_daemon options f =
-  let log_file = GlobalConfig.log_file (ServerArgs.root options) in
+  let log_link = ServerFiles.log_link (ServerArgs.root options) in
+  (try Sys.rename log_link (log_link ^ ".old") with _ -> ());
+  let log_file = ServerFiles.make_link_of_timestamped log_link in
   let {Daemon.pid; _} = Daemon.fork begin fun (_ic, _oc) ->
     ignore @@ Unix.setsid ();
     let {Daemon.pid; _} = Daemon.fork ~log_file f in
@@ -458,7 +463,7 @@ let monitor_daemon options f =
     | _ -> HackEventLogger.bad_exit proc_stat)
   end in
   Printf.eprintf "Spawned %s (child pid=%d)\n" Program.name pid;
-  Printf.eprintf "Logs will go to %s\n%!" log_file;
+  Printf.eprintf "Logs will go to %s\n%!" log_link;
   ()
 
 let start () =

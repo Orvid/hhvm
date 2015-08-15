@@ -172,6 +172,8 @@ struct CompactRequestData final : RequestEventHandler {
     clear();
   }
 
+  void vscan(IMarker&) const override {}
+
   uint8_t version;
 };
 IMPLEMENT_STATIC_REQUEST_LOCAL(CompactRequestData, s_compact_request_data);
@@ -855,7 +857,7 @@ class CompactReader {
         for (uint32_t i = 0; i < size; i++) {
           Variant key = readField(keySpec, keyType);
           Variant value = readField(valueSpec, valueType);
-          ainit.setKeyUnconverted(key, value);
+          ainit.setUnknownKey(key, value);
         }
         readCollectionEnd();
         return ainit.toVariant();
@@ -912,7 +914,7 @@ class CompactReader {
         ArrayInit ainit(size, ArrayInit::Mixed{});
         for (uint32_t i = 0; i < size; i++) {
           Variant value = readField(valueSpec, valueType);
-          ainit.setKeyUnconverted(value, true);
+          ainit.setUnknownKey(value, true);
         }
         readCollectionEnd();
         return ainit.toVariant();

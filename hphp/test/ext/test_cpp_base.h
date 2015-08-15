@@ -40,8 +40,10 @@ class TestCppBase : public TestBase {
 
   // building blocks
   bool TestIpBlockMap();
+  bool TestIpBlockMapIni();
   bool TestSatelliteServer();
   bool TestVirtualHost();
+  bool TestVirtualHostIni();
   bool TestCollectionHdf();
   bool TestCollectionIni();
 };

@@ -927,6 +927,10 @@ MemEffects memory_effects_impl(const IRInstruction& inst) {
   case NeqBool:
   case NeqDbl:
   case NeqInt:
+  case SameObj:
+  case NSameObj:
+  case EqRes:
+  case NeqRes:
   case SubDbl:
   case SubInt:
   case SubIntO:
@@ -1062,8 +1066,12 @@ MemEffects memory_effects_impl(const IRInstruction& inst) {
   case NeqStr:
   case SameStr:
   case NSameStr:
-  case SameObj:
-  case NSameObj:
+  case SameArr:
+  case NSameArr:
+  case GtRes:
+  case GteRes:
+  case LtRes:
+  case LteRes:
   case IncTransCounter:
   case LdBindAddr:
   case LdAsyncArParentChain:
@@ -1214,6 +1222,12 @@ MemEffects memory_effects_impl(const IRInstruction& inst) {
   case LteObj:
   case EqObj:
   case NeqObj:
+  case GtArr:
+  case GteArr:
+  case LtArr:
+  case LteArr:
+  case EqArr:
+  case NeqArr:
   case DecodeCufIter:
   case ConvCellToArr:  // decrefs src, may read obj props
   case ConvCellToObj:  // decrefs src

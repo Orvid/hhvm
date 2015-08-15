@@ -30,6 +30,7 @@
 #include "hphp/runtime/vm/jit/mc-generator-internal.h"
 #include "hphp/runtime/vm/jit/mc-generator.h"
 #include "hphp/runtime/vm/jit/service-requests.h"
+#include "hphp/runtime/vm/jit/smashable-instr.h"
 #include "hphp/runtime/vm/jit/types.h"
 #include "hphp/runtime/vm/runtime.h"
 
@@ -46,75 +47,8 @@ TRACE_SET_MOD(ustubs);
 
 namespace {
 
-TCA emitRetFromInterpretedFrame() {
-  Asm a { mcg->code.cold() };
-  moveToAlign(mcg->code.cold());
-  auto const ret = a.frontier();
-
-  auto const arBase = static_cast<int32_t>(sizeof(ActRec) - sizeof(Cell));
-  a.   lea  (rVmSp[-arBase], kSvcReqArgRegs[0]);
-  a.   movq (rVmFp, kSvcReqArgRegs[1]);
-  svcreq::emit_persistent(mcg->code.cold(), folly::none, REQ_POST_INTERP_RET);
-  return ret;
-}
-
-template <bool async>
-TCA emitRetFromInterpretedGeneratorFrame() {
-  Asm a { mcg->code.cold() };
-  moveToAlign(mcg->code.cold());
-  auto const ret = a.frontier();
-  auto const arOff = BaseGenerator::arOff() -
-    (async ? AsyncGenerator::objectOff() : Generator::objectOff());
-
-  // We have to get the Generator object from the current AR's $this, then
-  // find where its embedded AR is.
-  PhysReg rContAR = kSvcReqArgRegs[0];
-  a.    loadq  (rVmFp[AROFF(m_this)], rContAR);
-  a.    lea    (rContAR[arOff], rContAR);
-  a.    movq   (rVmFp, kSvcReqArgRegs[1]);
-  svcreq::emit_persistent(mcg->code.cold(), folly::none, REQ_POST_INTERP_RET);
-  return ret;
-}
-
-TCA emitDebuggerRetFromInterpretedFrame() {
-  Asm a { mcg->code.cold() };
-  moveToAlign(a.code());
-  auto const ret = a.frontier();
-
-  auto const rCallee = argNumToRegName[0];
-  auto const arBase = static_cast<int32_t>(sizeof(ActRec) - sizeof(Cell));
-  a.  lea   (rVmSp[-arBase], rCallee);
-  a.  loadl (rCallee[AROFF(m_soff)], eax);
-  a.  storel(eax, rVmTl[unwinderDebuggerReturnOffOff()]);
-  a.  storeq(rVmSp, rVmTl[unwinderDebuggerReturnSPOff()]);
-  a.  call  (TCA(popDebuggerCatch));
-  a.  movq  (rVmFp, rdx); // llvm catch traces expect rVmFp to be in rdx.
-  a.  jmp   (rax);
-
-  return ret;
-}
-
-template <bool async>
-TCA emitDebuggerRetFromInterpretedGenFrame() {
-  Asm a { mcg->code.cold() };
-  moveToAlign(a.code());
-  auto const ret = a.frontier();
-  auto const arOff = BaseGenerator::arOff() -
-    (async ? AsyncGenerator::objectOff() : Generator::objectOff());
-
-  // We have to get the Generator object from the current AR's $this, then
-  // find where its embedded AR is.
-  PhysReg rContAR = argNumToRegName[0];
-  a.  loadq (rVmFp[AROFF(m_this)], rContAR);
-  a.  lea   (rContAR[arOff], rContAR);
-  a.  loadl (rContAR[AROFF(m_soff)], eax);
-  a.  storel(eax, rVmTl[unwinderDebuggerReturnOffOff()]);
-  a.  storeq(rVmSp, rVmTl[unwinderDebuggerReturnSPOff()]);
-  a.  call  (TCA(popDebuggerCatch));
-  a.  movq  (rVmFp, rdx); // llvm catch traces expect rVmFp to be in rdx.
-  a.  jmp   (rax);
-
-  return ret;
+void moveToAlign(CodeBlock& cb) {
+  align(cb, Alignment::JmpTarget, AlignContext::Dead);
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -151,21 +85,6 @@ void emitCallToExit(UniqueStubs& uniqueStubs) {
   // record the tracelet address as starting from this callToExit-1,
   // so gdb does not barf.
   uniqueStubs.callToExit = uniqueStubs.add("callToExit", stub);
-}
-
-void emitReturnHelpers(UniqueStubs& us) {
-  us.retHelper    = us.add("retHelper", emitRetFromInterpretedFrame());
-  us.genRetHelper = us.add("genRetHelper",
-                           emitRetFromInterpretedGeneratorFrame<false>());
-  us.asyncGenRetHelper = us.add("asyncGenRetHelper",
-                           emitRetFromInterpretedGeneratorFrame<true>());
-  us.retInlHelper = us.add("retInlHelper", emitRetFromInterpretedFrame());
-  us.debuggerRetHelper =
-    us.add("debuggerRetHelper", emitDebuggerRetFromInterpretedFrame());
-  us.debuggerGenRetHelper = us.add("debuggerGenRetHelper",
-    emitDebuggerRetFromInterpretedGenFrame<false>());
-  us.debuggerAsyncGenRetHelper = us.add("debuggerAsyncGenRetHelper",
-    emitDebuggerRetFromInterpretedGenFrame<true>());
 }
 
 void emitResumeInterpHelpers(UniqueStubs& uniqueStubs) {
@@ -283,17 +202,6 @@ asm_label(a, debuggerReturn);
   uniqueStubs.add("endCatchHelper", uniqueStubs.endCatchHelper);
 }
 
-void emitStackOverflowHelper(UniqueStubs& uniqueStubs) {
-  Asm a { mcg->code.cold() };
-
-  moveToAlign(mcg->code.cold());
-  uniqueStubs.stackOverflowHelper = a.frontier();
-  a.    movq   (rVmFp, argNumToRegName[0]);
-  emitCall(a, CppCall::direct(handleStackOverflow), argSet(1));
-
-  uniqueStubs.add("stackOverflowHelper", uniqueStubs.stackOverflowHelper);
-}
-
 void emitFreeLocalsHelpers(UniqueStubs& uniqueStubs) {
   Label doRelease;
   Label release;
@@ -309,7 +217,7 @@ void emitFreeLocalsHelpers(UniqueStubs& uniqueStubs) {
   auto& cb = mcg->code.hot().available() > 512 ?
     const_cast<CodeBlock&>(mcg->code.hot()) : mcg->code.main();
   Asm a { cb };
-  moveToAlign(cb, kNonFallthroughAlign);
+  align(cb, Alignment::CacheLine, AlignContext::Dead);
   auto stubBegin = a.frontier();
 
 asm_label(a, release);
@@ -341,7 +249,7 @@ asm_label(a, doRelease);
   asm_label(a, skipDecRef);
   };
 
-  moveToAlign(cb, kJmpTargetAlign);
+  moveToAlign(cb);
   uniqueStubs.freeManyLocalsHelper = a.frontier();
   a.    lea    (rVmFp[-(jit::kNumFreeLocalsHelpers * sizeof(Cell))],
                 rFinished);
@@ -462,7 +370,7 @@ void emitFCallArrayHelper(UniqueStubs& uniqueStubs) {
     const_cast<CodeBlock&>(mcg->code.hot()) : mcg->code.main();
   Asm a { cb };
 
-  moveToAlign(cb, kNonFallthroughAlign);
+  align(cb, Alignment::CacheLine, AlignContext::Dead);
   uniqueStubs.fcallArrayHelper = a.frontier();
 
   /*
@@ -653,42 +561,16 @@ void emitFunctionSurprisedOrStackOverflow(UniqueStubs& uniqueStubs) {
                   uniqueStubs.functionSurprisedOrStackOverflow);
 }
 
-void emitBindCallStubs(UniqueStubs& uniqueStubs) {
-  auto emitStub = [](bool immutable) {
-    auto& cb = mcg->code.cold();
-    auto const start = cb.frontier();
-    Asm a{cb};
-    a.  loadq  (rip[intptr_t(&mcg)], argNumToRegName[0]);
-    a.  loadq  (*rsp, argNumToRegName[1]); // reconstruct toSmash from savedRip
-    a.  subq   (kCallLen, argNumToRegName[1]);
-    a.  movq   (rVmFp, argNumToRegName[2]);
-    a.  movb   (immutable, rbyte(argNumToRegName[3]));
-    a.  subq   (8, rsp); // align stack
-    a.  call   (TCA(getMethodPtr(&MCGenerator::handleBindCall)));
-    a.  addq   (8, rsp);
-    a.  jmp    (rax);
-    return start;
-  };
-
-  uniqueStubs.bindCallStub = emitStub(false);
-  uniqueStubs.add("bindCallStub", uniqueStubs.bindCallStub);
-  uniqueStubs.immutableBindCallStub = emitStub(true);
-  uniqueStubs.add("immutableBindCallStub", uniqueStubs.immutableBindCallStub);
-}
-
 }
 
 //////////////////////////////////////////////////////////////////////
 
-UniqueStubs emitUniqueStubs() {
-  UniqueStubs us;
+void emitUniqueStubs(UniqueStubs& us) {
   auto functions = {
     emitCallToExit,
-    emitReturnHelpers,
     emitResumeInterpHelpers,
     emitThrowSwitchMode,
     emitCatchHelper,
-    emitStackOverflowHelper,
     emitFreeLocalsHelpers,
     emitDecRefHelper,
     emitFuncPrologueRedispatch,
@@ -697,10 +579,8 @@ UniqueStubs emitUniqueStubs() {
     emitFuncBodyHelperThunk,
     emitFunctionEnterHelper,
     emitFunctionSurprisedOrStackOverflow,
-    emitBindCallStubs,
   };
   for (auto& f : functions) f(us);
-  return us;
 }
 
 //////////////////////////////////////////////////////////////////////

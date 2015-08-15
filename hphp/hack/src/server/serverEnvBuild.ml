@@ -19,12 +19,19 @@ let make_genv options config watch_paths =
   let ai_mode      = ServerArgs.ai_mode options in
   let gc_control   = ServerConfig.gc_control config in
   Typing_deps.trace :=
-    not check_mode || not ai_mode || ServerArgs.convert options <> None ||
+    not check_mode || ai_mode <> None || ServerArgs.convert options <> None ||
     ServerArgs.save_filename options <> None;
   let nbr_procs = GlobalConfig.nbr_procs in
-  let workers = Some (Worker.make nbr_procs gc_control) in
+  let workers =
+    if Sys.win32 then
+      None (* No parallelism on Windows yet, Work-in-progress *)
+    else
+      Some (Worker.make nbr_procs gc_control) in
   let dfind =
-    if check_mode || ai_mode then None else Some (DfindLib.init watch_paths) in
+    if Sys.win32 || check_mode || ai_mode <> None then
+      None
+    else
+      Some (DfindLib.init watch_paths) in
   { options;
     config;
     workers;

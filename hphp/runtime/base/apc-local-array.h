@@ -127,6 +127,7 @@ private:
   void sweep();
 
 public:
+  void reap();
   template<class F> void scan(F& mark) const {
     //mark(m_arr);
     if (m_localCache) {
@@ -141,7 +142,6 @@ private:
   mutable TypedValue* m_localCache;
   unsigned m_sweep_index;
   friend struct MemoryManager; // access to m_sweep_index
-  template<typename F> friend void scan(const APCLocalArray& this_, F& mark);
 };
 
 //////////////////////////////////////////////////////////////////////

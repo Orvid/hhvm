@@ -72,7 +72,7 @@
 #include "hphp/runtime/vm/bytecode.h"
 #include "hphp/runtime/vm/debug/debug.h"
 #include "hphp/runtime/vm/func.h"
-#include "hphp/runtime/vm/jit/back-end-x64.h" // XXX Layering violation.
+#include "hphp/runtime/vm/jit/align.h"
 #include "hphp/runtime/vm/jit/check.h"
 #include "hphp/runtime/vm/jit/code-gen.h"
 #include "hphp/runtime/vm/jit/debug-guards.h"
@@ -86,6 +86,7 @@
 #include "hphp/runtime/vm/jit/recycle-tc.h"
 #include "hphp/runtime/vm/jit/region-selection.h"
 #include "hphp/runtime/vm/jit/service-requests.h"
+#include "hphp/runtime/vm/jit/smashable-instr.h"
 #include "hphp/runtime/vm/jit/srcdb.h"
 #include "hphp/runtime/vm/jit/timer.h"
 #include "hphp/runtime/vm/jit/translate-region.h"
@@ -716,14 +717,10 @@ TCA MCGenerator::emitFuncPrologue(Func* func, int argc) {
   assertx(m_fixups.empty());
 
   TCA mainOrig = code.main().frontier();
+
   // If we're close to a cache line boundary, just burn some space to
   // try to keep the func and its body on fewer total lines.
-  if (((uintptr_t)code.main().frontier() & backEnd().cacheLineMask()) >=
-      (backEnd().cacheLineSize() / 2)) {
-    backEnd().moveToAlign(code.main(), MoveToAlignFlags::kCacheLineAlign);
-  }
-  m_fixups.m_alignFixups.emplace(
-    code.main().frontier(), std::make_pair(backEnd().cacheLineSize() / 2, 0));
+  align(code.main(), Alignment::CacheLineRoundUp, AlignContext::Dead);
 
   TransLocMaker maker(code);
   maker.markStart();
@@ -896,13 +893,13 @@ TCA MCGenerator::regeneratePrologue(TransID prologueTransId, SrcKey triggerSk) {
   PrologueCallersRec* pcr =
     m_tx.profData()->prologueCallers(prologueTransId);
   for (TCA toSmash : pcr->mainCallers()) {
-    backEnd().smashCall(toSmash, start);
+    smashCall(toSmash, start);
   }
   // If the prologue has a guard, then smash its guard-callers as well.
   if (backEnd().funcPrologueHasGuard(start, func)) {
     TCA guard = backEnd().funcPrologueToGuard(start, func);
     for (TCA toSmash : pcr->guardCallers()) {
-      backEnd().smashCall(toSmash, guard);
+      smashCall(toSmash, guard);
     }
   }
   pcr->clearAllCallers();
@@ -1036,20 +1033,18 @@ MCGenerator::bindJmp(TCA toSmash, SrcKey destSk, ServiceRequest req,
 
   DecodedInstruction di(toSmash);
   if (di.isBranch() && !di.isJmp()) {
-    auto jt = backEnd().jccTarget(toSmash);
-    assertx(jt);
-    if (jt == tDest) {
-      // Already smashed
-      return tDest;
-    }
+    auto const target = smashableJccTarget(toSmash);
+    assertx(target);
+
+    // Return if already smashed.
+    if (target == tDest) return tDest;
     sr->chainFrom(IncomingBranch::jccFrom(toSmash));
   } else {
-    assertx(!backEnd().jccTarget(toSmash));
-    if (!backEnd().jmpTarget(toSmash)
-        || backEnd().jmpTarget(toSmash) == tDest) {
-      // Already smashed
-      return tDest;
-    }
+    auto const target = smashableJmpTarget(toSmash);
+    assertx(target);
+
+    // Return if already smashed.
+    if (!target || target == tDest) return tDest;
     sr->chainFrom(IncomingBranch::jmpFrom(toSmash));
   }
 
@@ -1081,16 +1076,16 @@ MCGenerator::bindJmp(TCA toSmash, SrcKey destSk, ServiceRequest req,
  * offNotTaken:
  */
 TCA
-MCGenerator::bindJccFirst(TCA toSmash,
-                          SrcKey skTaken, SrcKey skNotTaken,
-                          bool taken,
-                          bool& smashed) {
+MCGenerator::bindJccFirst(TCA jccAddr, SrcKey skTaken, SrcKey skNotTaken,
+                          bool taken, bool& smashed) {
   LeaseHolder writer(Translator::WriteLease());
   if (!writer) return nullptr;
+
   auto const skWillExplore = taken ? skTaken : skNotTaken;
   auto const skWillDefer = taken ? skNotTaken : skTaken;
   auto const dest = skWillExplore;
-  auto cc = backEnd().jccCondCode(toSmash);
+  auto cc = smashableJccCond(jccAddr);
+
   TRACE(3, "bindJccFirst: explored %d, will defer %d; "
            "overwriting cc%02x taken %d\n",
         skWillExplore.offset(), skWillDefer.offset(), cc, taken);
@@ -1099,36 +1094,32 @@ MCGenerator::bindJccFirst(TCA toSmash,
   // We want the branch to point to whichever side has not been explored yet.
   if (taken) cc = ccNegate(cc);
 
-  auto& cb = code.blockFor(toSmash);
-  Asm as { cb };
-  // Its not clear where the IncomingBranch should go to if cb is code.frozen()
+  auto& cb = code.blockFor(jccAddr);
+
+  // It's not clear where the IncomingBranch should go to if cb is frozen.
   assertx(&cb != &code.frozen());
 
-  // XXX Use of kJmp*Len here is a layering violation.
-  using namespace x64;
+  auto const jmpAddr = jccAddr + smashableJccLen();
+  auto const afterAddr = jmpAddr + smashableJmpLen();
 
-  // can we just directly fall through?
-  // a jmp + jz takes 5 + 6 = 11 bytes
-  bool const fallThru = toSmash + kJccLen + kJmpLen == cb.frontier() &&
-    !m_tx.getSrcDB().find(dest);
+  // Can we just directly fall through?
+  bool const fallThru = afterAddr == cb.frontier() &&
+                        !m_tx.getSrcDB().find(dest);
 
   auto const tDest = getTranslation(TranslArgs{dest, !fallThru});
-  if (!tDest) {
-    return 0;
-  }
+  if (!tDest) return nullptr;
 
-  auto const jmpTarget = backEnd().jmpTarget(toSmash + kJccLen);
-  if (jmpTarget != backEnd().jccTarget(toSmash)) {
-    // someone else already smashed this one. Ideally we would
-    // just re-execute from toSmash - except the flags will have
-    // been trashed.
+  auto const jmpTarget = smashableJmpTarget(jmpAddr);
+  if (jmpTarget != smashableJccTarget(jccAddr)) {
+    // Someone else already smashed this one.  Ideally we would just re-execute
+    // from jccAddr---except the status flags will have been trashed.
     return tDest;
   }
 
   auto const stub = svcreq::emit_bindjmp_stub(
     code.frozen(),
     liveSpOff(),
-    toSmash,
+    jccAddr,
     skWillDefer,
     TransFlags{}
   );
@@ -1136,12 +1127,13 @@ MCGenerator::bindJccFirst(TCA toSmash,
   mcg->cgFixups().process(nullptr);
   smashed = true;
   assertx(Translator::WriteLease().amOwner());
+
   /*
    * Roll over the jcc and the jmp/fallthru. E.g., from:
    *
    *     toSmash:    jcc   <jmpccFirstStub>
    *     toSmash+6:  jmp   <jmpccFirstStub>
-   *     toSmash+11: <probably the new translation == tdest>
+   *     toSmash+11: <probably the new translation == tDest>
    *
    * to:
    *
@@ -1149,9 +1141,9 @@ MCGenerator::bindJccFirst(TCA toSmash,
    *     toSmash+6:  nop5
    *     toSmash+11: newHotness
    */
-  CodeCursor cg(cb, toSmash);
-  as.jcc(cc, stub);
-  m_tx.getSrcRec(dest)->chainFrom(IncomingBranch::jmpFrom(cb.frontier()));
+  smashJcc(jccAddr, stub, cc);
+  m_tx.getSrcRec(dest)->chainFrom(IncomingBranch::jmpFrom(jmpAddr));
+
   TRACE(5, "bindJccFirst: overwrote with cc%02x taken %d\n", cc, taken);
   return tDest;
 }
@@ -1358,10 +1350,10 @@ TCA MCGenerator::handleBindCall(TCA toSmash,
       start = getFuncPrologue(func, nArgs);
       if (!isImmutable) start = backEnd().funcPrologueToGuard(start, func);
 
-      if (start && backEnd().callTarget(toSmash) != start) {
-        assertx(backEnd().callTarget(toSmash));
+      if (start && smashableCallTarget(toSmash) != start) {
+        assertx(smashableCallTarget(toSmash));
         TRACE(2, "bindCall smash %p -> %p\n", toSmash, start);
-        backEnd().smashCall(toSmash, start);
+        smashCall(toSmash, start);
 
         bool is_profiled = false;
         // For functions to be PGO'ed, if their current prologues are still
@@ -1799,9 +1791,11 @@ MCGenerator::translateWork(const TranslArgs& args) {
   assertx(m_tx.getSrcDB().find(sk));
 
   TCA mainOrig = code.main().frontier();
+
   if (args.align) {
-    mcg->backEnd().moveToAlign(code.main(),
-                               MoveToAlignFlags::kNonFallthroughAlign);
+    // Align without registering fixups; we do so manually after translating
+    // the region because we may hit retries and need to roll back.
+    align(code.main(), Alignment::CacheLine, AlignContext::Dead, false);
   }
 
   TransLocMaker maker(code);
@@ -1933,7 +1927,9 @@ MCGenerator::translateWork(const TranslArgs& args) {
 
   if (args.align) {
     m_fixups.m_alignFixups.emplace(
-      loc.mainStart(), std::make_pair(backEnd().cacheLineSize() - 1, 0));
+      loc.mainStart(),
+      std::make_pair(Alignment::CacheLine, AlignContext::Dead)
+    );
   }
 
   if (RuntimeOption::EvalEnableReusableTC) {
@@ -2086,7 +2082,7 @@ void MCGenerator::initUniqueStubs() {
   // Put the following stubs into ahot, rather than a.
   CodeCache::Selector cbSel(CodeCache::Selector::Args(code).
                             hot(m_tx.useAHot()));
-  m_tx.uniqueStubs = backEnd().emitUniqueStubs();
+  m_tx.uniqueStubs.emitAll();
   m_fixups.process(nullptr); // in case we generated literals
 }
 

@@ -59,6 +59,8 @@ using IFaceSupportFn = bool (*)(const StringData*);
 
 using StrCmpFn = bool (*)(const StringData*, const StringData*);
 using ObjCmpFn = bool (*)(const ObjectData*, const ObjectData*);
+using ArrCmpFn = bool (*)(const ArrayData*, const ArrayData*);
+using ResCmpFn = bool (*)(const ResourceHdr*, const ResourceHdr*);
 
 }
 
@@ -264,6 +266,30 @@ static CallMap s_callMap {
     {EqObj,              static_cast<ObjCmpFn>(equal), DSSA, SSync,
                           {{SSA, 0}, {SSA, 1}}},
     {NeqObj,             static_cast<ObjCmpFn>(nequal), DSSA, SSync,
+                          {{SSA, 0}, {SSA, 1}}},
+    {GtArr,              static_cast<ArrCmpFn>(more), DSSA, SSync,
+                          {{SSA, 0}, {SSA, 1}}},
+    {GteArr,             static_cast<ArrCmpFn>(moreEqual), DSSA, SSync,
+                          {{SSA, 0}, {SSA, 1}}},
+    {LtArr,              static_cast<ArrCmpFn>(less), DSSA, SSync,
+                          {{SSA, 0}, {SSA, 1}}},
+    {LteArr,             static_cast<ArrCmpFn>(lessEqual), DSSA, SSync,
+                          {{SSA, 0}, {SSA, 1}}},
+    {EqArr,              static_cast<ArrCmpFn>(equal), DSSA, SSync,
+                          {{SSA, 0}, {SSA, 1}}},
+    {NeqArr,             static_cast<ArrCmpFn>(nequal), DSSA, SSync,
+                          {{SSA, 0}, {SSA, 1}}},
+    {SameArr,            static_cast<ArrCmpFn>(same), DSSA, SSync,
+                          {{SSA, 0}, {SSA, 1}}},
+    {NSameArr,           static_cast<ArrCmpFn>(nsame), DSSA, SSync,
+                          {{SSA, 0}, {SSA, 1}}},
+    {GtRes,              static_cast<ResCmpFn>(more), DSSA, SSync,
+                          {{SSA, 0}, {SSA, 1}}},
+    {GteRes,             static_cast<ResCmpFn>(moreEqual), DSSA, SSync,
+                          {{SSA, 0}, {SSA, 1}}},
+    {LtRes,              static_cast<ResCmpFn>(less), DSSA, SSync,
+                          {{SSA, 0}, {SSA, 1}}},
+    {LteRes,             static_cast<ResCmpFn>(lessEqual), DSSA, SSync,
                           {{SSA, 0}, {SSA, 1}}},
 
     /* Static prop helpers */

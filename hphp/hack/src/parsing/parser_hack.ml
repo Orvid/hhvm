@@ -241,13 +241,13 @@ let rec check_lvalue env = function
   | String _ | String2 _ | Yield _ | Yield_break
   | Await _ | Expr_list _ | Cast _ | Unop _
   | Binop _ | Eif _ | InstanceOf _ | New _ | Efun _ | Lfun _ | Xml _
-  | Import _ | Ref _) ->
+  | Import _) ->
       error_at env pos "Invalid lvalue"
 
 (* The bound variable of a foreach can be a reference (but not inside
   a list expression. *)
 let check_foreach_lvalue env = function
-  | (_, Ref e) | e -> check_lvalue env e
+  | (_, Unop (Uref, e)) | e -> check_lvalue env e
 
 (*****************************************************************************)
 (* Operator priorities.
@@ -1220,9 +1220,12 @@ and class_defs env =
 
 and class_toplevel_word env word =
   match word with
-  | "category" | "children" ->
+  | "children" ->
       xhp_format env;
       class_defs env
+  | "category" ->
+      let cat = XhpCategory (xhp_category_list env) in
+      cat :: class_defs env
   | "const" ->
       let error_state = !(env.errors) in
       let def =
@@ -1321,8 +1324,6 @@ and trait_require env =
 (*
  * within a class body -->
  *    children ...;
- *    attribute ...;
- *    category ...;
  *)
 (*****************************************************************************)
 
@@ -1330,7 +1331,7 @@ and xhp_format env =
   match L.token env.file env.lb with
   | Tsc -> ()
   | Teof ->
-      error_expect env "end of XHP category/attribute/children declaration";
+      error_expect env "end of XHP children declaration";
       ()
   | Tquote ->
       let pos = Pos.make env.file env.lb in
@@ -1601,6 +1602,35 @@ and xhp_attr_list_remain env =
           L.back env.lb;
           xhp_attr_list env)
   | _ -> error_expect env ";"; []
+
+and xhp_category env =
+  expect env Tpercent;
+  let token = L.xhpname env.file env.lb in
+  let ret =  Pos.make env.file env.lb, Lexing.lexeme env.lb in
+  (match token with | Txhpname -> ()
+                    | _ -> error_expect env "xhp name");
+  ret
+
+and xhp_category_list_remain env =
+  match L.token env.file env.lb with
+  | Tsc ->
+      []
+  | Tcomma ->
+      (match L.token env.file env.lb with
+      | Tsc ->
+          []
+      | _ ->
+          L.back env.lb;
+          xhp_category_list env)
+  | _ -> error_expect env ";"; []
+
+and xhp_category_list env =
+  let error_state = !(env.errors) in
+  let a = xhp_category env in
+  if !(env.errors) != error_state
+    then [a]
+    else [a] @ xhp_category_list_remain env
+
 
 (*****************************************************************************)
 (* Methods *)
@@ -2626,10 +2656,8 @@ and expr_atomic ~allow_class ~class_const env =
       L.back env.lb;
       let name = identifier env in
       fst name, Id name
-  | Tem | Tincr | Tdecr | Ttild | Tplus | Tminus as op ->
+  | Tem | Tincr | Tdecr | Ttild | Tplus | Tminus | Tamp as op ->
       expr_prefix_unary env pos op
-  | Tamp ->
-      expr_ref env pos
   | Tat ->
       with_priority env Tat expr
   | Tword ->
@@ -3105,6 +3133,7 @@ and expr_cast env start_pos =
 
 and unary_priority = function
   | Tplus | Tminus -> Tincr
+  | Tamp -> Tref
   | x -> x
 
 and expr_prefix_unary env start op =
@@ -3118,6 +3147,7 @@ and expr_prefix_unary env start op =
       | Ttild -> Utild
       | Tplus -> Uplus
       | Tminus -> Uminus
+      | Tamp -> Uref
       | _ -> assert false
     in
     Pos.btw start (fst e), Unop (op, e)
@@ -3496,16 +3526,6 @@ and expr_array_get env e1 =
   end
 
 (*****************************************************************************)
-(* Reference (&$v|&func()|&$obj->prop *)
-(*****************************************************************************)
-
-and expr_ref env start =
-  with_priority env Tref begin fun env ->
-    let e = expr env in
-    Pos.btw start (fst e), Ref e
-  end
-
-(*****************************************************************************)
 (* XHP *)
 (*****************************************************************************)
 
@@ -3592,7 +3612,42 @@ and xhp_attribute_string env start abs_start =
   | _ ->
       xhp_attribute_string env start abs_start
 
+
 and xhp_body pos name env =
+  (* First grab any literal text that appears before the next
+   * bit of markup *)
+  let start = Pos.make env.file env.lb in
+  let abs_start = env.lb.Lexing.lex_curr_pos in
+  let text = xhp_text env start abs_start in
+  (* Now handle any markup *)
+  text @ xhp_body_inner pos name env
+
+(* Grab literal text that appears inside of xhp. *)
+and xhp_text env start abs_start =
+  match L.xhptoken env.file env.lb with
+  (* If we have hit something that is meaningful,
+   * we have to stop collecting literal text and go back
+   * to xhp_body. Grab any text, clean it up, and return. *)
+  | Tlcb | Tlt | Topen_xhp_comment | Teof ->
+    L.back env.lb;
+
+    let len = env.lb.Lexing.lex_curr_pos - abs_start in
+    let pos = Pos.btw start (Pos.make env.file env.lb) in
+
+    let content = String.sub env.lb.Lexing.lex_buffer abs_start len in
+    (* need to squash whitespace down to a single space *)
+    let squished = Regexp_utils.squash_whitespace content in
+    (* if it is empty or all whitespace just ignore it *)
+    if squished = "" || squished = " " then [] else
+      (* Need to escape it in case it contains any backslashes... *)
+      let escaped = Php_escaping.escape squished in
+      [pos, String2 ([], (pos, escaped))]
+
+  | _ -> xhp_text env start abs_start
+
+(* parses an xhp body where we know that the next token is not
+ * just more literal text *)
+and xhp_body_inner pos name env =
   match L.xhptoken env.file env.lb with
   | Tlcb when env.mode = FileInfo.Mdecl ->
       ignore_body env;
@@ -3607,10 +3662,8 @@ and xhp_body pos name env =
   | Tlt ->
       if is_xhp env
       then
-        (match xhp env with
-        | (_, Xml (_, _, _)) as xml ->
-            xml :: xhp_body pos name env
-        | _ -> xhp_body pos name env)
+        let xml = xhp env in
+        xml :: xhp_body pos name env
       else
         (match L.xhptoken env.file env.lb with
         | Tslash ->
@@ -3625,17 +3678,25 @@ and xhp_body pos name env =
                 error_expect env name;
                 []
               end
-            else xhp_body pos name env
+            else begin
+              error_expect env "closing tag name";
+              xhp_body pos name env
+            end
         | _ ->
+            error_at env pos "Stray < in xhp";
             L.back env.lb;
             xhp_body pos name env
         )
   | Teof ->
       error_at env pos "Xhp tag not closed";
       []
-  | Tword ->
+  (* The lexer returns open comments so that we can notice them and
+   * drop them from our text fields. Parse the comment and continue. *)
+  | Topen_xhp_comment ->
+      xhp_comment env.file env.lb;
       xhp_body pos name env
-  | _ -> xhp_body pos name env
+  (* xhp_body_inner only gets called when one of the above was seen *)
+  | _ -> assert false
 
 (*****************************************************************************)
 (* Typedefs *)

@@ -370,6 +370,8 @@ let unparser _env =
         StrStatement [kindStr; hintStr; varStr]
     | XhpAttr _ ->
         u_todo "XhpAttr" (fun () -> StrEmpty)
+    | XhpCategory _ ->
+        u_todo "XhpCategory" (fun () -> StrEmpty)
     | Method m -> u_method_ kind m
     | TypeConst _ -> u_todo "TypeConst" (fun () -> StrEmpty)
 
@@ -736,7 +738,6 @@ let unparser _env =
       | String2 _
       | List _
       | Obj_get _
-      | Ref _
       | Unsafeexpr _ -> res
       | Collection _
       | Cast _
@@ -885,8 +886,6 @@ let unparser _env =
         StrWords [Str "/* UNSAFE_EXPR */"; u_expr expr]
     | Import (flavor, expr) ->
         StrWords [u_import_flavor flavor; StrParens (u_expr expr)]
-    | Ref expr ->
-        StrList [Str "&"; u_expr expr]
   and u_import_flavor =
     function
     | Require -> Str "require"
@@ -952,6 +951,7 @@ let unparser _env =
         | Uminus -> prefix_with "-"
         | Uincr -> prefix_with "++"
         | Udecr -> prefix_with "--"
+        | Uref -> prefix_with "&"
   and u_case v =
     let case_expr name block =
       StrWords [name; Str ":"; u_naked_block block;] in

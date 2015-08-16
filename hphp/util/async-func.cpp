@@ -15,11 +15,8 @@
 */
 #include "hphp/util/async-func.h"
 
-#include <sys/time.h>
-#include <sys/resource.h>
-#include <sys/mman.h>
-#include <unistd.h>
-
+#include <folly/CPortability.h>
+#include <folly/FilePortability.h>
 #include <folly/Portability.h>
 
 namespace HPHP {

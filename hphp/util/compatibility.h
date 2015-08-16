@@ -18,7 +18,8 @@
 
 #include <cstdint>
 #include <time.h>
-#include <unistd.h>
+
+#include <folly/FilePortability.h>
 
 #include "hphp/util/portability.h"
 

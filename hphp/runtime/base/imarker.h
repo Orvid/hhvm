@@ -33,8 +33,11 @@ template <class T> class Optional;
 }
 
 namespace HPHP {
-struct Array;
-struct String;
+namespace req { template<typename T> struct ptr; }
+class Array;
+struct ArrayIter;
+struct MArrayIter;
+class String;
 struct Variant;
 struct ObjectData;
 struct ResourceData;

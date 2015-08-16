@@ -116,8 +116,7 @@ struct FPIEnt {
  *
  */
 struct Func {
-  friend class FuncEmitter;
-  template <typename F> friend void scan(const Func&, F&);
+  friend struct FuncEmitter;
 
   /////////////////////////////////////////////////////////////////////////////
   // Types.

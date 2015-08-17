@@ -1772,8 +1772,13 @@ static inline uint16_t strtr_hash(const char *str, int len) {
     return res;
 }
 
+#ifdef _MSC_VER
+static int strtr_compare_hash_suffix(void *ctx_g, const void *p_a,
+                                     const void *p_b) {
+#else
 static int strtr_compare_hash_suffix(const void *p_a, const void *p_b,
                                      void *ctx_g) {
+#endif
   auto   *a    = (PatAndRepl *)p_a;
   auto   *b    = (PatAndRepl *)p_b;
   auto   *pair = (std::pair <size_t, int> *)ctx_g;
@@ -1825,8 +1830,13 @@ void WuManberReplacement::initTables() {
   prefix.reserve(patterns.size());
 
   std::pair <size_t, int> pair(m, B);
-  qsort_r(&patterns[0], patterns.size(), sizeof(PatAndRepl),
-          strtr_compare_hash_suffix, &pair);
+#ifdef _MSC_VER
+  qsort_s(
+#else
+  qsort_r(
+#endif
+    &patterns[0], patterns.size(), sizeof(PatAndRepl),
+    strtr_compare_hash_suffix, &pair);
 
   {
     uint16_t last_h = -1; // assumes not all bits are used
@@ -1935,6 +1945,7 @@ bool strtr_slow(const Array& arr, StringBuffer& result, String& key,
   return false;
 }
 
+#ifndef _MSC_VER
 Variant strtr_fast(const String& str, const Array& arr,
                    int minlen, int maxlen) {
   uint64_t mask[maxlen][256];
@@ -1980,6 +1991,7 @@ Variant strtr_fast(const String& str, const Array& arr,
   }
   return result.detach();
 }
+#endif
 
 static constexpr int kBitsPerQword = CHAR_BIT * sizeof(uint64_t);
 
@@ -2021,9 +2033,11 @@ Variant HHVM_FUNCTION(strtr,
     if (minlen == -1 || minlen > len) minlen = len;
   }
 
+#ifndef _MSC_VER
   if (arr.size() <= kBitsPerQword && maxlen <= 16) {
     return strtr_fast(str, arr, minlen, maxlen);
   }
+#endif
 
   if (arr.size() < 1000) {
     WuManberReplacement replacer(arr, minlen);
@@ -2158,7 +2172,12 @@ Array HHVM_FUNCTION(localeconv) {
 
 String HHVM_FUNCTION(nl_langinfo,
                      int item) {
+#ifdef _MSC_VER
+  raise_warning("nl_langinfo is not yet implemented on Windows!");
+  return "";
+#else
   return nl_langinfo(item);
+#endif
 }
 
 String HHVM_FUNCTION(convert_cyr_string,

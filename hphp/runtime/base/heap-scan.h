@@ -36,14 +36,15 @@
 #include "hphp/runtime/ext/extension-registry.h"
 #include "hphp/runtime/base/request-event-handler.h"
 #include "hphp/runtime/server/server-note.h"
-#ifdef ENABLE_ZEND_COMPAT
-#include "hphp/runtime/ext_zend_compat/php-src/TSRM/TSRM.h"
-#endif
 #include "hphp/runtime/ext/asio/ext_sleep-wait-handle.h"
 #include "hphp/runtime/ext/asio/asio-external-thread-event-queue.h"
 #include "hphp/runtime/ext/asio/ext_reschedule-wait-handle.h"
 #include "hphp/runtime/ext/asio/ext_external-thread-event-wait-handle.h"
 #include "hphp/runtime/ext/asio/ext_resumable-wait-handle.h"
+
+#ifdef ENABLE_ZEND_COMPAT
+#include "hphp/runtime/ext_zend_compat/php-src/TSRM/TSRM.h"
+#endif
 
 namespace HPHP {
 

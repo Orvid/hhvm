@@ -50,6 +50,7 @@
 #include "hphp/util/timer.h"
 
 #include <folly/Conv.h>
+#include <folly/FilePortability.h>
 
 #include <boost/lexical_cast.hpp>
 
@@ -57,8 +58,6 @@
 #include <string>
 #include <sstream>
 #include <iomanip>
-
-#include <unistd.h>
 
 #ifdef GOOGLE_CPU_PROFILER
 #include <google/profiler.h>

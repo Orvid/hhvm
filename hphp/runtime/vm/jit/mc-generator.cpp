@@ -22,8 +22,6 @@
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <sys/mman.h>
-#include <unistd.h>
 #include <unwind.h>
 
 #include <algorithm>
@@ -35,6 +33,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include <folly/CPortability.h>
+#include <folly/FilePortability.h>
 #include <folly/Format.h>
 #include <folly/MapUtil.h>
 #include <folly/Optional.h>

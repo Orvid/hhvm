@@ -24,10 +24,10 @@
 namespace HPHP { namespace jit {
 
 #ifdef MSVC_NO_CONSTEXPR_MEMBER_OFFSETOF
-static constexpr size_t m_reqInjectionDataOff =
+static constexpr size_t reqInjectionDataOff =
   offsetof(ThreadInfo, m_reqInjectionData);
 static constexpr size_t dbgOff =
-  m_reqInjectionDataOff +
+  reqInjectionDataOff +
   RequestInjectionData::debuggerReadOnlyOffset();
 #else
 static constexpr size_t dbgOff =

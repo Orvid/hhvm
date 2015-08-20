@@ -141,10 +141,7 @@ private:
   const Array& m_classWhiteList;    // classes allowed to be unserialized
 };
 
-///////////////////////////////////////////////////////////////////////////////
-
-void unserializeVariant(Variant&, VariableUnserializer *unserializer,
-                        UnserializeMode mode = UnserializeMode::Value);
+void reserialize(VariableUnserializer *uns, StringBuffer &buf);
 
 }
 

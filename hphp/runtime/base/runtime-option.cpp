@@ -1271,7 +1271,8 @@ void RuntimeOption::Load(
     IncludeSearchPaths.insert(IncludeSearchPaths.begin(), ".");
 
     Config::Bind(FileCache, ini, config, "Server.FileCache");
-    Config::Bind(DefaultDocument, ini, config, "Server.DefaultDocument");
+    Config::Bind(DefaultDocument, ini, config, "Server.DefaultDocument",
+                 "index.php");
     Config::Bind(ErrorDocument404, ini, config, "Server.ErrorDocument404");
     normalizePath(ErrorDocument404);
     Config::Bind(ForbiddenAs404, ini, config, "Server.ForbiddenAs404");
@@ -1435,7 +1436,22 @@ void RuntimeOption::Load(
   }
   {
     // Static File
-    Config::Bind(StaticFileExtensions, ini, config, "StaticFile.Extensions");
+
+    hphp_string_imap<std::string> staticFileDefault;
+    staticFileDefault["css"] = "text/css";
+    staticFileDefault["gif"] = "image/gif";
+    staticFileDefault["html"] = "text/html";
+    staticFileDefault["jpeg"] = "image/jpeg";
+    staticFileDefault["jpg"] = "image/jpeg";
+    staticFileDefault["mp3"] = "audio/mpeg";
+    staticFileDefault["png"] = "image/png";
+    staticFileDefault["tif"] = "image/tiff";
+    staticFileDefault["tiff"] = "image/tiff";
+    staticFileDefault["txt"] = "text/plain";
+    staticFileDefault["zip"] = "application/zip";
+
+    Config::Bind(StaticFileExtensions, ini, config, "StaticFile.Extensions",
+                 staticFileDefault);
     Config::Bind(StaticFileGenerators, ini, config, "StaticFile.Generators");
 
     auto matches_callback = [] (const IniSettingMap &ini_m, const Hdf &hdf_m,

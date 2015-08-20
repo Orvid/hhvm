@@ -730,58 +730,6 @@ void Array::prepend(const Variant& v) {
   if (newarr != m_arr) m_arr = Ptr::attach(newarr);
 }
 
-void Array::unserialize(VariableUnserializer *uns) {
-  int64_t size = uns->readInt();
-  uns->expectChar(':');
-  uns->expectChar('{');
-
-  if (size == 0) {
-    operator=(Create());
-  } else {
-    if (UNLIKELY(size < 0 || size > std::numeric_limits<int>::max())) {
-      throw Exception("Array size out of bounds");
-    }
-    auto const scale = computeScaleFromSize(size);
-    auto const allocsz = computeAllocBytes(scale);
-
-    // For large arrays, do a naive pre-check for OOM.
-    if (UNLIKELY(allocsz > kMaxSmallSize && MM().preAllocOOM(allocsz))) {
-      check_request_surprise_unlikely();
-    }
-
-    // Pre-allocate an ArrayData of the given size, to avoid escalation in the
-    // middle, which breaks references.
-    operator=(ArrayInit(size, ArrayInit::Mixed{}).toArray());
-    for (int64_t i = 0; i < size; i++) {
-      Variant key;
-      unserializeVariant(key, uns, UnserializeMode::Key);
-      if (!key.isString() && !key.isInteger()) {
-        throw Exception("Invalid key");
-      }
-      // for apc, we know the key can't exist, but ignore that optimization
-      assert(uns->type() != VariableUnserializer::Type::APCSerialize ||
-             !exists(key, true));
-
-      Variant &value = lvalAt(key, AccessFlags::Key);
-      if (UNLIKELY(isRefcountedType(value.getRawType()))) {
-        uns->putInOverwrittenList(value);
-      }
-      unserializeVariant(value, uns);
-
-      if (i < (size - 1)) {
-        auto lastChar = uns->peekBack();
-        if ((lastChar != ';' && lastChar != '}')) {
-          throw Exception("Array element not terminated properly");
-        }
-      }
-    }
-  }
-
-  check_request_surprise_unlikely();
-
-  uns->expectChar('}');
-}
-
 ///////////////////////////////////////////////////////////////////////////////
 // sorting
 

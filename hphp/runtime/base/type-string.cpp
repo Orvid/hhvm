@@ -505,30 +505,6 @@ bool String::operator<(const Variant& v) const {
   return HPHP::less(get(), v);
 }
 
-void String::unserialize(VariableUnserializer *uns,
-                         char delimiter0 /* = '"' */,
-                         char delimiter1 /* = '"' */) {
-  int64_t size = uns->readInt();
-  if (size >= RuntimeOption::MaxSerializedStringSize) {
-    throw Exception("Size of serialized string (%d) exceeds max", int(size));
-  }
-  if (size < 0) {
-    throw Exception("Size of serialized string (%d) must not be negative",
-                    int(size));
-  }
-
-  uns->expectChar(':');
-  uns->expectChar(delimiter0);
-
-  auto px = req::ptr<StringData>::attach(StringData::Make(int(size)));
-  auto const buf = px->bufferSlice();
-  assert(size <= buf.size());
-  uns->read(buf.data(), size);
-  px->setSize(size);
-  m_str = std::move(px);
-  uns->expectChar(delimiter1);
-}
-
 ///////////////////////////////////////////////////////////////////////////////
 // debugging
 

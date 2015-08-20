@@ -32,6 +32,7 @@ constexpr auto C = static_cast<ContextMask>(AttrContext::Class);
 constexpr auto F = static_cast<ContextMask>(AttrContext::Func);
 constexpr auto P = static_cast<ContextMask>(AttrContext::Prop);
 constexpr auto T = static_cast<ContextMask>(AttrContext::TraitImport);
+constexpr auto A = static_cast<ContextMask>(AttrContext::Alias);
 
 constexpr bool supported(ContextMask mask, AttrContext a) {
   return mask & static_cast<ContextMask>(a);
@@ -42,6 +43,7 @@ constexpr bool supported(ContextMask mask, AttrContext a) {
   X(AttrProtected,            F|P|T,   "protected");        \
   X(AttrPrivate,              F|P|T,   "private");          \
   X(AttrStatic,               F|P,     "static");           \
+  X(AttrEnum,                 C,       "enum");             \
   X(AttrDeepInit,             P,       "deep_init");        \
   X(AttrInterface,            C,       "interface");        \
   X(AttrNoExpandTrait,        C,       "no_expand_trait");  \
@@ -51,6 +53,7 @@ constexpr bool supported(ContextMask mask, AttrContext a) {
   X(AttrTrait,                C|F,     "trait");            \
   X(AttrUnique,               C|F,     "unique");           \
   X(AttrBuiltin,              C|F,     "builtin");          \
+  X(AttrPersistent,           C|F|A,   "persistent");       \
   X(AttrNoOverrideMagicGet,   C,       "nov_get");          \
   X(AttrNoOverrideMagicSet,   C,       "nov_set");          \
   X(AttrNoOverrideMagicIsset, C,       "nov_isset");        \

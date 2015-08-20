@@ -14,70 +14,34 @@
    +----------------------------------------------------------------------+
 */
 
+#include "hphp/runtime/vm/jit/func-guard.h"
+
+#include "hphp/runtime/base/arch.h"
+
 #include "hphp/runtime/vm/jit/func-guard-arm.h"
 #include "hphp/runtime/vm/jit/func-guard-x64.h"
 
-#include "hphp/runtime/vm/jit/abi.h"
-#include "hphp/runtime/vm/jit/abi-x64.h"
-#include "hphp/runtime/vm/jit/mc-generator.h"
-#include "hphp/runtime/vm/jit/smashable-instr-x64.h"
-#include "hphp/runtime/vm/jit/translator.h"
-#include "hphp/runtime/vm/jit/unique-stubs.h"
-
-#include "hphp/util/asm-x64.h"
 #include "hphp/util/data-block.h"
-#include "hphp/util/immed.h"
 
 namespace HPHP { namespace jit {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-namespace x64 {
-
-///////////////////////////////////////////////////////////////////////////////
-
 void emitFuncGuard(const Func* func, CodeBlock& cb) {
-  using namespace reg;
-  X64Assembler a { cb };
-
-  assertx(x64::abi(CodeKind::CrossTrace).gpUnreserved.contains(rax));
-
-  TCA start DEBUG_ONLY = a.frontier();
-
-  auto const funcImm = Immed64(func);
-
-  if (funcImm.fits(sz::dword)) {
-    emitSmashableCmpq(a.code(), funcImm.l(), rVmFp,
-                      safe_cast<int8_t>(AROFF(m_func)));
-  } else {
-    // Although func doesn't fit in a signed 32-bit immediate, it may still fit
-    // in an unsigned one.  Rather than deal with yet another case (which only
-    // happens when we disable jemalloc), just emit a smashable mov followed by
-    // a register cmp.
-    emitSmashableMovq(a.code(), uint64_t(func), rax);
-    a.  cmpq   (rax, rVmFp[AROFF(m_func)]);
-  }
-  a.    jnz    (mcg->tx().uniqueStubs.funcPrologueRedispatch);
-
-  assertx(funcPrologueToGuard(a.frontier(), func) == start);
-  assertx(funcPrologueHasGuard(a.frontier(), func));
+  ARCH_SWITCH_CALL(emitFuncGuard, func, cb);
 }
 
-///////////////////////////////////////////////////////////////////////////////
-
-} // x64
-
-namespace arm {
-
-///////////////////////////////////////////////////////////////////////////////
-
-void emitFuncGuard(const Func* func, CodeBlock& cb) {
-  not_implemented();
+TCA funcGuardFromPrologue(TCA prologue, const Func* func) {
+  ARCH_SWITCH_CALL(funcGuardFromPrologue, prologue, func);
 }
 
-///////////////////////////////////////////////////////////////////////////////
+bool funcGuardMatches (TCA guard, const Func* func) {
+  ARCH_SWITCH_CALL(funcGuardMatches, guard, func);
+}
 
-} // arm
+void clobberFuncGuard(TCA guard, const Func* func) {
+  ARCH_SWITCH_CALL(clobberFuncGuard, guard, func);
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 

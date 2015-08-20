@@ -59,7 +59,7 @@ namespace HPHP {
  *                        | Parent object           |
  *                        +-------------------------+ high address
  */
-struct Resumable {
+struct alignas(16) Resumable {
   // This function is used only by AFWH, temporary till AFWH is converted to HNI
   static Resumable* FromObj(ObjectData* obj) {
     return reinterpret_cast<Resumable*>(obj) - 1;
@@ -187,7 +187,7 @@ private:
     };
     uint64_t m_offsetAndSize;
   };
-} __attribute__((__aligned__(16)));
+};
 
 #ifdef MSVC_NO_CONSTEXPR_MEMBER_OFFSETOF
 constexpr ptrdiff_t Resumable__arOff = offsetof(Resumable, m_actRec);

@@ -19,10 +19,6 @@ let unimpl s =
 let bug s =
   Printf.eprintf "BUG: %s\n" s; exit 1
 
-(* *)
-let make_varray es = Nast.Array (List.map ~f:(fun e -> Nast.AFvalue e) es)
-let make_kvarray fields =
-  Nast.Array (List.map ~f:(fun (k, v) -> Nast.AFkvalue (k, v)) fields)
 (*** Types associated with translation ***)
 
 type flavor =
@@ -393,10 +389,12 @@ let emit_FPassLval =      emit_op2il  "FPass"
 let emit_FCall =          emit_op1i   "FCall"
 let emit_FCallUnpack =    emit_op1i   "FCallUnpack"
 let emit_DefCls =         emit_op1i   "DefCls"
+let emit_DefTypeAlias =   emit_op1i   "DefTypeAlias"
 let emit_NewArray =       emit_op1i   "NewArray"
 let emit_NewMixedArray =  emit_op1i   "NewMixedArray"
 let emit_NewCol =         emit_op1i   "NewCol"
 let emit_Jmp =            emit_op1s   "Jmp"
+let emit_JmpNS =          emit_op1s   "JmpNS"
 let emit_Not =            emit_op0    "Not"
 let emit_BitNot =         emit_op0    "BitNot"
 let emit_Clone =          emit_op0    "Clone"
@@ -504,7 +502,7 @@ let fmt_eq_binop bop =
   | Ast.Lte | Ast.Gt | Ast.Gte -> bug "not a eq binop"
 
 (* XXX: what all casts do we allow? *)
-let fmt_cast (_, h) =
+let fmt_cast h =
   match h with
   | Nast.Hprim Nast.Tint -> "Int"
   | Nast.Hprim Nast.Tbool -> "Bool"
@@ -557,3 +555,16 @@ let emit_fault_cleanup ?faultlet_extras:(extra=(fun env -> env))
     emit_Unwind env
   in
   add_cleanup env emit_faultlet
+
+
+(* Some ast manipulation stuff that maybe belongs elsewhere *)
+let make_varray es = Nast.Array (List.map ~f:(fun e -> Nast.AFvalue e) es)
+let make_kvarray fields =
+  Nast.Array (List.map ~f:(fun (k, v) -> Nast.AFkvalue (k, v)) fields)
+(* Extract the elements out of a ShapeMap, sorted by position so that
+ * it matches the order it would be in HHVM. Sigh. *)
+let extract_shape_fields smap =
+  let get_pos =
+    function Nast.SFlit (p, _) | Nast.SFclass_const ((p, _), _) -> p in
+  List.sort (fun (k1, _) (k2, _) -> Pos.compare (get_pos k1) (get_pos k2))
+    (Nast.ShapeMap.elements smap)

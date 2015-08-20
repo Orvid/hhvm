@@ -92,8 +92,7 @@ and emit_member env (_, expr_ as expr) =
   match expr_ with
   | Lvar id -> env, Mlocal (get_lid_name id)
   | Int (_, n) -> env, Mint n
-  | String (_, s) -> env, Mstring (Php_escaping.unescape_single s)
-  | String2 ([], s) -> env, Mstring (Php_escaping.unescape_double s)
+  | String (_, s) -> env, Mstring s
   | _ ->
     let env = emit_expr env expr in
     env, Mexpr
@@ -515,8 +514,21 @@ and emit_expr env (pos, expr_ as expr) =
   | Null -> emit_Null env
   | True -> emit_bool env true
   | False -> emit_bool env false
-  | String (_, s) -> emit_String env (Php_escaping.unescape_single s)
-  | String2 ([], s) -> emit_String env (Php_escaping.unescape_double s)
+  | String (_, s) -> emit_String env s
+
+  | String2 [] -> bug "empty String2"
+  (* If we there are multiple parts of the String2, they will get
+   * stringified when they get concatenated. If there is just one
+   * we need to cast it manually. *)
+  | String2 [e] ->
+    let env = emit_expr env e in
+    emit_cast env (Hprim Tstring)
+  | String2 (e1::el) ->
+    let env = emit_expr env e1 in
+    List.fold_left el ~init:env ~f:begin fun env e ->
+      let env = emit_expr env e in
+      emit_binop env Ast.Dot
+    end
 
   (* TODO: lots of ways to be better;
    * use NewStructArray/NewArray/NewPackedArray/array lits *)
@@ -538,15 +550,10 @@ and emit_expr env (pos, expr_ as expr) =
     let env = emit_expr env e in
     emit_Clone env
 
-  | Any -> unimpl "UNSAFE_EXPR/import/??"
-
-  (* probably going to take AST changes *)
-  | String2 _ -> unimpl "double-quoted string interpolation"
-
   (* XXX: is this right?? *)
   | This -> emit_BareThis env "Notice"
 
-  | Cast (h, e) ->
+  | Cast ((_, h), e) ->
     let env = emit_expr env e in
     emit_cast env h
 
@@ -609,16 +616,9 @@ and emit_expr env (pos, expr_ as expr) =
       | SFlit (pos, _ as s) -> pos, String s
       | SFclass_const ((pos, _ as id), s) -> pos, Class_const (CI id, s)
     in
-    (* The doc comment says only use in testing code but this is
-     * /actually/ the right thing here *)
     let shape_fields =
       List.map ~f:(fun (k, v) -> (shape_field_to_expr k, v))
-        (ShapeMap.elements smap) in
-    (* Sort the fields by their position in order to have the same insertion
-     * order as HHVM. Sigh. *)
-    let shape_fields = List.sort
-      (fun ((p1, _), _) ((p2, _), _) -> Pos.compare p1 p2)
-      shape_fields in
+        (extract_shape_fields smap) in
     let array = pos, make_kvarray shape_fields in
     emit_expr env array
 
@@ -694,3 +694,4 @@ and emit_expr env (pos, expr_ as expr) =
 
   | Id _ -> unimpl "Id"
   | Assert _ -> unimpl "Assert"
+  | Any -> unimpl "UNSAFE_EXPR/import/??"

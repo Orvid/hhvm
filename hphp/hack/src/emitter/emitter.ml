@@ -17,6 +17,8 @@ open Nast
 
 open Emitter_core
 
+module SN = Naming_special_names
+
 let emit_generator_prologue env m =
   match m.m_fun_kind with
     | Ast.FGenerator | Ast.FAsyncGenerator ->
@@ -45,16 +47,30 @@ let emit_func_body env m =
     | n -> emit_strs env [".numiters"; string_of_int n; ";"] in
   emit_str_raw env output
 
-let emit_param ~tparams p =
+(* returns the param text for this param along with
+ * Some (name, DV id, expr) if there is a default param and None otherwise *)
+let emit_param ~tparams i p =
   assert (not p.param_is_reference); (* actually right *)
   if p.param_is_variadic then unimpl "variadic params";
-  if p.param_expr <> None then unimpl "default args";
-  Emitter_types.fmt_hint ~tparams ~always_extended:false p.param_hint ^
-  get_lid_name p.param_id
+  let type_info =
+    Emitter_types.fmt_hint_info ~tparams ~always_extended:false p.param_hint in
+
+  let name = get_lid_name p.param_id in
+  match p.param_expr with
+  | None -> type_info ^ name, None
+  | Some default ->
+    let dv_id = "DV" ^ string_of_int i in
+    (* TODO: emit eval'able php for the argument for reflection *)
+    let phpCode = "(\"\"\"<UNIMPLEMENTED>\"\"\")" in
+    type_info ^ name ^ " = " ^ dv_id ^ phpCode,
+    Some (name, dv_id, default)
 
 let fmt_params ?(tparams=[]) params =
-  let param_names = List.map ~f:(emit_param ~tparams) params in
-  "(" ^ String.concat ", " param_names ^ ")"
+  let param_strs, defaults =
+    List.unzip (List.mapi ~f:(emit_param ~tparams) params) in
+  "(" ^ String.concat ", " param_strs ^ ")",
+  List.filter_opt defaults
+
 
 let fmt_visibility vis =
   match vis with
@@ -110,6 +126,17 @@ let emit_closure_vars env = function
   | Some vars ->
     emit_strs env ([".declvars"] @ vars @ [";"])
 
+let emit_default_inits env top_label inits =
+  let emit_default_init env (id, dv, expr) =
+    let env = emit_label env dv in
+    let env = Emitter_expr.emit_expr env expr in
+    let env = emit_SetL env id in
+    emit_PopC env
+  in
+  let env = List.fold_left ~f:emit_default_init ~init:env inits in
+  if inits = [] then env else
+    emit_JmpNS env top_label
+
 (* Emit a method or a function. m, the method, might actually just be
  * a dummy that was built from a function. We need tparams (which will be
  * any tparams that come from the class) because formatting types needs
@@ -140,15 +167,21 @@ let emit_method_or_func env ~is_method ~is_static ~tparams ~full_name
                 ["mayusevv"] @
                 fmt_user_attributes m.m_user_attributes in
   let is_closure = closure_vars <> None in
-  let post = fmt_params ~tparams m.m_params ^ fmt_fun_tags env m ~is_closure in
+  let param_text, default_args = fmt_params ~tparams m.m_params in
+  let post = param_text ^ fmt_fun_tags env m ~is_closure in
   let tag = if is_method then ".method" else ".function" in
 
   (* return type hints are always "extended" because php doesn't have them *)
   let type_and_name =
-    Emitter_types.fmt_hint ~tparams ~always_extended:true m.m_ret ^ name in
+    Emitter_types.fmt_hint_info ~tparams ~always_extended:true m.m_ret ^ name in
+
+  let env, top_label = fresh_label env in
+
   let env = emit_enter env tag options type_and_name post in
   let env = emit_closure_vars env closure_vars in
+  let env = emit_label env top_label in
   let env = emit_str_raw env body_output in
+  let env = emit_default_inits env top_label default_args in
   let env = run_cleanups env in
   let env = emit_exit env in
   env
@@ -184,14 +217,6 @@ let emit_fun nenv env (_, x) =
   emit_str env ""
 
 
-let emit_default_ctor env name abstract =
-  let options = bool_option "abstract" abstract @ ["public"; "mayusevv"] in
-  let env = emit_enter env ".method" options name (fmt_params []) in
-  let env = emit_Null env in
-  let env = emit_RetC env in
-  let env = emit_exit env in
-  env
-
 (* extends lists and things are hints,
  * but I *think* it needs to be an apply? *)
 let fmt_class_hint = function
@@ -221,7 +246,7 @@ let emit_prop_init env ~is_static = function
     in
 
     let options = ["private"; "mayusevv"] @ extra_opts in
-    let env = emit_enter env ".method" options name (fmt_params []) in
+    let env = emit_enter env ".method" options name "()" in
 
     let fmt_var_init env (name, expr) =
       let env, skip_label = fresh_label env in
@@ -322,12 +347,18 @@ let emit_tconst env tconst =
     let v = unsafe_opt (Emitter_lit.fmt_lit structure) in
     emit_strs env [".const"; ""; snd tconst.c_tconst_name; "isType"; "="; v^";"]
 
+let emit_enum ~cls env e =
+  emit_strs env [".enum_ty";
+                 Emitter_types.fmt_hint_constraint
+                   ~tparams:(fst cls.c_tparams) ~always_extended:true e.e_base
+                 ^ ";"]
+
 let class_kind_options  = function
   | Ast.Cabstract -> ["abstract"]
   | Ast.Cnormal -> []
   | Ast.Cinterface -> ["interface"]
   | Ast.Ctrait -> ["final"; "trait"]
-  | Ast.Cenum -> unimpl "first class enums"
+  | Ast.Cenum -> ["final"; "enum"]
 
 (* do any handling of user attributes we need
  * (just failing on ones we don't recognize now) *)
@@ -360,7 +391,9 @@ let emit_class nenv env (_, x) =
   (* The "extends" list of an interface is "implements" to hhvm *)
   let implements, extends = match cls.c_kind with
     | Ast.Cinterface -> cls.c_extends, []
-    | Ast.Cabstract | Ast.Cnormal | Ast.Ctrait | Ast.Cenum ->
+    | Ast.Cenum -> [], [Pos.none,
+                        Happly ((Pos.none, SN.Classes.cHH_BuiltinEnum), [])]
+    | Ast.Cabstract | Ast.Cnormal | Ast.Ctrait ->
       cls.c_implements, cls.c_extends in
 
   let extends_list = fmt_extends_list extends in
@@ -383,6 +416,8 @@ let emit_class nenv env (_, x) =
   let env = emit_enter env ".class" options name
                        (extends_list^implements_list) in
 
+  (* Emit all of the main content parts of the class *)
+  let env = opt_fold (emit_enum ~cls) env cls.c_enum in
   let env = List.fold_left ~f:emit_use ~init:env cls.c_uses in
   let env, uninit_vars = lmap (emit_var ~is_static:false) env cls.c_vars in
   let env, uninit_svars =
@@ -394,14 +429,16 @@ let emit_class nenv env (_, x) =
   let env, uninit_consts = lmap emit_const env cls.c_consts in
   let env = List.fold_left ~f:emit_tconst ~init:env cls.c_typeconsts in
 
-  let uninit_vars = List.filter_map uninit_vars ~f:(fun x->x) in
-  let uninit_svars = List.filter_map uninit_svars ~f:(fun x->x) in
-  let uninit_consts = List.filter_map uninit_consts ~f:(fun x->x) in
+  let uninit_vars = List.filter_opt uninit_vars in
+  let uninit_svars = List.filter_opt uninit_svars in
+  let uninit_consts = List.filter_opt uninit_consts in
 
   (* Now for 86* stuff *)
   let env = match cls.c_constructor with
             | None -> emit_str env ".default_ctor;"
-            | Some m -> emit_method ~is_static:false ~cls env m in
+            | Some m ->
+              (* don't emit the mildly bogus return hint for ctors *)
+              emit_method ~is_static:false ~cls env {m with m_ret = None} in
 
   let env = emit_prop_init env ~is_static:false uninit_vars in
   let env = emit_prop_init env ~is_static:true uninit_svars in
@@ -450,19 +487,47 @@ let rec emit_all_closures env =
   emit_all_closures env
 
 
+let emit_typedef _nenv env (_, x) =
+  let typedef = Naming_heap.TypedefHeap.find_unsafe x in
+  emit_strs env [".alias"; fmt_name x; "=";
+                 Emitter_types.fmt_hint_constraint
+                   ~tparams:[] ~always_extended:false typedef.t_kind ^ ";"]
+
 (* Bogusly emit a call to a hardcoded test function *)
 let emit_test_call env =
   let env = emit_FPushFuncD env 0 "test" in
   let env = emit_FCall env 0 in
   emit_PopR env
 
-let emit_main env ~is_test classes =
+let emit_main env ~is_test ast =
   let env = start_new_function env in
   let env = emit_enter env ".main" [] "" "" in
 
-  (* emit def classes *)
-  let env =
-    List.foldi ~f:(fun i env _ -> emit_DefCls env i) ~init:env classes in
+  (* We use the original AST to drive emitting DefTypeAlias and
+   * DefCls, since their order matters and the nast doesn't track
+   * that. (We could have sorted those by pos or something but we'll
+   * want something like this to handle toplevel statements eventually
+   * anyways). *)
+  let rec emit_program env num_classes num_aliases = function
+    | [] -> env
+    | def :: defs ->
+      match def with
+      | Ast.Class _ ->
+        let env = emit_DefCls env num_classes in
+        emit_program env (num_classes+1) num_aliases defs
+      | Ast.Typedef _ ->
+        let env = emit_DefTypeAlias env num_aliases in
+        emit_program env num_classes (num_aliases+1) defs
+      (* It probably wouldn't be too hard to handle this by bundling
+       * them into a dummy function... *)
+      | Ast.Stmt _ -> unimpl "toplevel stmts"
+      | Ast.Namespace (_, ns_defs) ->
+        emit_program env num_classes num_aliases (ns_defs@defs)
+      | Ast.Fun _ | Ast.Constant _ | Ast.NamespaceUse _ ->
+        emit_program env num_classes num_aliases defs
+  in
+
+  let env = emit_program env 0 0 ast in
 
   (* emit debugging test *)
   let env = if is_test then emit_test_call env else env in
@@ -474,23 +539,24 @@ let emit_main env ~is_test classes =
   let env = emit_exit env in
   emit_str env ""
 
-let emit_file ~is_test nenv filename
+let emit_file ~is_test nenv filename ast
     {FileInfo.file_mode; funs; classes; typedefs; consts; _} =
   assert (file_mode = Some FileInfo.Mstrict);
-  if typedefs <> [] then unimpl "typedefs";
   if consts <> [] then unimpl "global consts";
 
   let env = new_env () in
 
   let env = emit_strs env
     [".filepath"; quote_str (Relative_path.to_absolute filename) ^ ";\n"] in
-  let env = emit_main env ~is_test classes in
+  let env = emit_main env ~is_test ast in
   let env = List.fold_left ~f:(emit_fun nenv) ~init:env funs in
   let env = List.fold_left ~f:(emit_class nenv) ~init:env classes in
+  let env = List.fold_left ~f:(emit_typedef nenv) ~init:env typedefs in
   let env = emit_all_closures env in
+  let env = emit_str env "" in
 
   let output = get_output env in
-  Printf.printf "%s\n" output;
+  output_string stdout output;
   (* Dump all the output to a log file if HH_EMITTER_LOG set *)
   try Sys_utils.append_file ~file:(Sys.getenv "HH_EMITTER_LOG") output
   with _ -> ()

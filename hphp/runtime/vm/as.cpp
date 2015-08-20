@@ -69,7 +69,7 @@
  *
  *   - builtinType (for native funcs) field on ParamInfo
  *
- *   - type aliases
+ *   - typeStructure fields on type aliases, etc
  *
  *   - while class/function names can contains ':', '$', and ';',
  *     .use declarations can't handle those names because of syntax
@@ -86,12 +86,12 @@
 #include <iterator>
 #include <vector>
 #include <boost/algorithm/string.hpp>
-#include <boost/format.hpp>
 #include <boost/scoped_ptr.hpp>
 #include <boost/noncopyable.hpp>
 #include <boost/bind.hpp>
 
 #include <folly/Conv.h>
+#include <folly/Memory.h>
 #include <folly/Range.h>
 #include <folly/String.h>
 
@@ -121,15 +121,14 @@ typedef void (*ParserFunc)(AsmState& as);
 
 struct Error : std::runtime_error {
   explicit Error(int where, const std::string& what)
-    : std::runtime_error(str(
-        boost::format("Assembler Error: line %1%: %2%") % where % what))
+    : std::runtime_error(folly::sformat(
+        "Assembler Error: line {}: {}", where, what))
   {}
 };
 
 struct Input {
   explicit Input(std::istream& in)
     : m_in(in)
-    , m_lineNumber(1)
   {}
 
   int peek() { return m_in.peek(); }
@@ -151,7 +150,7 @@ struct Input {
 
   void expect(int c) {
     if (getc() != c) {
-      error(str(boost::format("expected character `%1%'") % char(c)));
+      error(folly::sformat("expected character `{}'", char(c)));
     }
   }
 
@@ -165,7 +164,7 @@ struct Input {
     skipWhitespace();
     if (getc() != c) {
       throw Error(currentLine,
-        str(boost::format("expected character `%1%'") % char(c)));
+        folly::sformat("expected character `{}'", char(c)));
     }
   }
 
@@ -239,7 +238,7 @@ struct Input {
     default:
       if (is_oct(src)) {
         auto val = int64_t{src} - '0';
-        for (auto i = int{0}; i < 3; ++i) {
+        for (auto i = int{1}; i < 3; ++i) {
           src = getc();
           if (!is_oct(src)) { ungetc(src); break; }
           val *= 8;
@@ -255,11 +254,12 @@ struct Input {
       if (src == 'x' || src == 'X') {
         auto val = uint64_t{0};
         if (!is_hex(peek())) error("\\x used without no following hex digits");
-        do {
+        for (auto i = int{0}; i < 2; ++i) {
           src = getc();
+          if (!is_hex(src)) { ungetc(src); break; }
           val *= 0x10;
           val += hex_val(src);
-        } while (is_hex(peek()));
+        }
         if (val > std::numeric_limits<uint8_t>::max()) {
           error("hex escape sequence overflowed");
         }
@@ -402,7 +402,7 @@ private:
 
 private:
   std::istream& m_in;
-  int m_lineNumber;
+  int m_lineNumber{1};
 };
 
 struct StackDepth;
@@ -464,9 +464,7 @@ struct StackDepth {
 };
 
 struct Label {
-  Label() : bound(false) {}
-
-  bool bound;
+  bool bound{false};
   Offset target;
   StackDepth stackDepth;
 
@@ -477,8 +475,7 @@ struct Label {
    * jump/switch/etc instruction, while the first points to the
    * immediate.)
    */
-  typedef std::vector<std::pair<Offset,Offset> > SourcesVec;
-  SourcesVec sources;
+  std::vector<std::pair<Offset,Offset>> sources;
 
   /*
    * List of a parameter ids that use this label for its DV
@@ -496,21 +493,12 @@ struct Label {
    * Map from exception names to the list of EHEnt's that have a catch
    * block jumping to this label for that name.
    */
-  typedef std::map<std::string,std::vector<size_t> > CatchesMap;
-  CatchesMap ehCatches;
+  std::map<std::string,std::vector<size_t>> ehCatches;
 };
 
 struct AsmState : private boost::noncopyable {
   explicit AsmState(std::istream& in)
     : in(in)
-    , emittedPseudoMain(false)
-    , fe(0)
-    , numItersSet(false)
-    , currentStackDepth(&initStackDepth)
-    , stackHighWater(0)
-    , fdescDepth(0)
-    , fdescHighWater(0)
-    , maxUnnamed(-1)
   {
     currentStackDepth->setBase(*this, 0);
   }
@@ -548,7 +536,7 @@ struct AsmState : private boost::noncopyable {
   }
 
   void addLabelTarget(const std::string& name) {
-    Label& label = labelMap[name];
+    auto& label = labelMap[name];
     if (label.bound) {
       error("Duplicate label " + name);
     }
@@ -569,7 +557,7 @@ struct AsmState : private boost::noncopyable {
   }
 
   void addLabelJump(const std::string& name, Offset immOff, Offset opcodeOff) {
-    Label& label = labelMap[name];
+    auto& label = labelMap[name];
 
     if (currentStackDepth == nullptr) {
       // Jump is unreachable, nothing to do here
@@ -580,7 +568,7 @@ struct AsmState : private boost::noncopyable {
     // (whatever this may be: it may still be unknown)
     currentStackDepth->addListener(*this, &label.stackDepth);
 
-    label.sources.push_back(std::make_pair(immOff, opcodeOff));
+    label.sources.emplace_back(immOff, opcodeOff);
   }
 
   void enforceStackDepth(int stackDepth) {
@@ -625,11 +613,11 @@ struct AsmState : private boost::noncopyable {
       error("beginFpi called from unreachable instruction");
     }
 
-    fpiRegs.push_back(FPIReg());
-    FPIReg& fpi = fpiRegs.back();
-    fpi.fpushOff = fpushOff;
-    fpi.stackDepth = currentStackDepth;
-    fpi.fpOff = currentStackDepth->currentOffset;
+    fpiRegs.push_back(FPIReg{
+      fpushOff,
+      currentStackDepth,
+      currentStackDepth->currentOffset
+    });
     fdescDepth += kNumActRecCells;
     fdescHighWater = std::max(fdescDepth, fdescHighWater);
   }
@@ -637,8 +625,8 @@ struct AsmState : private boost::noncopyable {
   void endFpi() {
     assert(!fpiRegs.empty());
 
-    FPIEnt& ent = fe->addFPIEnt();
-    FPIReg& reg = fpiRegs.back();
+    auto& ent = fe->addFPIEnt();
+    const auto& reg = fpiRegs.back();
     ent.m_fpushOff = reg.fpushOff;
     ent.m_fcallOff = ue->bcPos();
     ent.m_fpOff = reg.fpOff;
@@ -660,52 +648,40 @@ struct AsmState : private boost::noncopyable {
     assert(!fe);
     ue->addPreClassEmitter(pce);
     pce = 0;
+    enumTySet = false;
   }
 
   void patchLabelOffsets(const Label& label) {
-    for (Label::SourcesVec::const_iterator it = label.sources.begin();
-        it != label.sources.end();
-        ++it) {
-      ue->emitInt32(label.target - it->second, it->first);
+    for (auto const& source : label.sources) {
+      ue->emitInt32(label.target - source.second, source.first);
     }
 
-    for (std::vector<Id>::const_iterator it = label.dvInits.begin();
-        it != label.dvInits.end();
-        ++it) {
-      fe->params[*it].funcletOff = label.target;
+    for (auto const& dvinit : label.dvInits) {
+      fe->params[dvinit].funcletOff = label.target;
     }
 
-    for (std::vector<size_t>::const_iterator it = label.ehFaults.begin();
-        it != label.ehFaults.end();
-        ++it) {
-      fe->ehtab[*it].m_fault = label.target;
+    for (auto const& fault : label.ehFaults) {
+      fe->ehtab[fault].m_fault = label.target;
     }
 
-    for (Label::CatchesMap::const_iterator it = label.ehCatches.begin();
-        it != label.ehCatches.end();
-        ++it) {
-      Id exId = ue->mergeLitstr(makeStaticString(it->first));
-      for (std::vector<size_t>::const_iterator idx_it = it->second.begin();
-          idx_it != it->second.end();
-          ++idx_it) {
-        fe->ehtab[*idx_it].m_catches.push_back(
-          std::make_pair(exId, label.target));
+    for (auto const& eh_catch : label.ehCatches) {
+      auto const exId = ue->mergeLitstr(makeStaticString(eh_catch.first));
+      for (auto const& idx : eh_catch.second) {
+        fe->ehtab[idx].m_catches.emplace_back(exId, label.target);
       }
     }
   }
 
   void finishFunction() {
-    for (LabelMap::const_iterator it = labelMap.begin();
-        it != labelMap.end();
-        ++it) {
-      if (!it->second.bound) {
-        error("Undefined label " + it->first);
+    for (auto const& label : labelMap) {
+      if (!label.second.bound) {
+        error("Undefined label " + label.first);
       }
-      if (it->second.target >= ue->bcPos()) {
-        error("label " + it->first + " falls of the end of the function");
+      if (label.second.target >= ue->bcPos()) {
+        error("label " + label.first + " falls of the end of the function");
       }
 
-      patchLabelOffsets(it->second);
+      patchLabelOffsets(label.second);
     }
 
     // Patch the FPI structures
@@ -721,7 +697,7 @@ struct AsmState : private boost::noncopyable {
     enforceStackDepth(0);
 
     // Bump up the unnamed local count
-    int numLocals = maxUnnamed+1;
+    const int numLocals = maxUnnamed + 1;
     while (fe->numLocals() < numLocals) {
       fe->allocUnnamedLocal();
     }
@@ -772,30 +748,28 @@ struct AsmState : private boost::noncopyable {
 
   UnitEmitter* ue;
   Input in;
-  bool emittedPseudoMain;
+  bool emittedPseudoMain{false};
 
-  typedef std::map<std::string,ArrayData*> ADataMap;
-  ADataMap adataMap;
+  std::map<std::string,ArrayData*> adataMap;
 
   // When inside a class, this state is active.
   PreClassEmitter* pce;
 
   // When we're doing a function or method body, this state is active.
-  FuncEmitter* fe;
+  FuncEmitter* fe{nullptr};
   std::vector<FPIReg> fpiRegs;
-  typedef std::map<std::string,Label> LabelMap;
   std::map<std::string,Label> labelMap;
-  bool numItersSet;
+  bool numItersSet{false};
+  bool enumTySet{false};
   StackDepth initStackDepth;
-  StackDepth* currentStackDepth;
-  int stackHighWater;
-  int fdescDepth;
-  int fdescHighWater;
-  int maxUnnamed;
+  StackDepth* currentStackDepth{&initStackDepth};
+  int stackHighWater{0};
+  int fdescDepth{0};
+  int fdescHighWater{0};
+  int maxUnnamed{-1};
   std::vector<std::pair<size_t, StackDepth*>> fpiToUpdate;
   std::set<std::string,stdltistr> hoistables;
 };
-
 
 void StackDepth::adjust(AsmState& as, int delta) {
   currentOffset += delta;
@@ -823,7 +797,7 @@ void StackDepth::addListener(AsmState& as, StackDepth* target) {
   if (baseValue) {
     target->setBase(as, *baseValue + currentOffset);
   } else {
-    listeners.push_back(std::make_pair(target, currentOffset));
+    listeners.emplace_back(target, currentOffset);
   }
 }
 
@@ -936,7 +910,7 @@ ArrayData* read_litarray(AsmState& as) {
     as.error("expected name of .adata literal");
   }
 
-  AsmState::ADataMap::const_iterator it = as.adataMap.find(name);
+  auto const it = as.adataMap.find(name);
   if (it == as.adataMap.end()) {
     as.error("unknown array data literal name " + name);
   }
@@ -976,7 +950,7 @@ std::vector<unsigned char> read_immvector(AsmState& as, int& stackCount) {
     as.error("expected location code in immediate vector");
   }
 
-  LocationCode lcode = parseLocationCode(word.c_str());
+  auto lcode = parseLocationCode(word.c_str());
   if (lcode == InvalidLocationCode) {
     as.error("expected location code, saw `" + word + "'");
   }
@@ -1143,8 +1117,7 @@ std::vector<uint32_t> read_itervec(AsmState& as) {
     as.in.skipSpaceTab();
 
     if (!as.in.readword(word)) as.error("Was expecting iterator id.");
-    uint32_t iterId = folly::to<uint32_t>(word);
-    ret.push_back(iterId);
+    ret.push_back(folly::to<uint32_t>(word));
 
     if (!isdigit(word.back())) {
       if (word.back() == '>') break;
@@ -1194,10 +1167,10 @@ SSwitchJmpVector read_sswitch_jmpvector(AsmState& as) {
 
     as.in.readword(defLabel);
 
-    ret.push_back(std::make_pair(
+    ret.emplace_back(
       as.ue->mergeLitstr(makeStaticString(caseStr)),
       defLabel
-    ));
+    );
 
     as.in.skipWhitespace();
   } while (as.in.peek() != '-');
@@ -1207,7 +1180,7 @@ SSwitchJmpVector read_sswitch_jmpvector(AsmState& as) {
   as.in.readword(defLabel);
 
   // -1 stand for default case.
-  ret.push_back(std::make_pair(-1, defLabel));
+  ret.emplace_back(-1, defLabel);
 
   as.in.expect('>');
 
@@ -1216,8 +1189,7 @@ SSwitchJmpVector read_sswitch_jmpvector(AsmState& as) {
 
 //////////////////////////////////////////////////////////////////////
 
-typedef std::map<std::string,ParserFunc> OpcodeParserMap;
-OpcodeParserMap opcode_parsers;
+std::map<std::string,ParserFunc> opcode_parsers;
 
 #define IMM_NA
 #define IMM_ONE(t) IMM_##t
@@ -1262,8 +1234,8 @@ OpcodeParserMap opcode_parsers;
   auto vecImm = read_immvector(as, vecImmStackValues);                \
   as.ue->emitInt32(vecImm.size());                                    \
   as.ue->emitInt32(vecImmStackValues);                                \
-  for (size_t i = 0; i < vecImm.size(); ++i) {                        \
-    as.ue->emitByte(vecImm[i]);                                       \
+  for (auto const& imm : vecImm) {                                    \
+    as.ue->emitByte(imm);                                             \
   }
 
 #define IMM_ILA do {                               \
@@ -1277,29 +1249,27 @@ OpcodeParserMap opcode_parsers;
 #define IMM_BLA do {                                    \
   std::vector<std::string> vecImm = read_jmpvector(as); \
   as.ue->emitInt32(vecImm.size());                      \
-  for (size_t i = 0; i < vecImm.size(); ++i) {          \
-    labelJumps.push_back(                               \
-      std::make_pair(vecImm[i], as.ue->bcPos()));       \
+  for (auto const& imm : vecImm) {                      \
+    labelJumps.emplace_back(imm, as.ue->bcPos());       \
     as.ue->emitInt32(0); /* to be patched */            \
   }                                                     \
 } while (0)
 
 #define IMM_SLA do {                                       \
-  SSwitchJmpVector vecImm = read_sswitch_jmpvector(as);    \
+  auto vecImm = read_sswitch_jmpvector(as);                \
   as.ue->emitInt32(vecImm.size());                         \
   for (auto const& pair : vecImm) {                        \
     as.ue->emitInt32(pair.first);                          \
-    labelJumps.push_back(                                  \
-      std::make_pair(pair.second, as.ue->bcPos()));        \
+    labelJumps.emplace_back(pair.second, as.ue->bcPos());  \
     as.ue->emitInt32(0); /* to be patched */               \
   }                                                        \
 } while(0)
 
 #define IMM_BA do {                                                 \
-  labelJumps.push_back(std::make_pair(                              \
+  labelJumps.emplace_back(                                          \
     read_opcode_arg<std::string>(as),                               \
     as.ue->bcPos()                                                  \
-  ));                                                               \
+  );                                                                \
   as.ue->emitInt32(0);                                              \
 } while (0)
 
@@ -1545,7 +1515,7 @@ void parse_catch(AsmState& as, int nestLevel) {
 
     as.in.expectWs(')');
 
-    catches.push_back(std::make_pair(except, label));
+    catches.emplace_back(except, label);
     as.in.skipWhitespace();
   }
   if (catches.empty()) {
@@ -1562,9 +1532,9 @@ void parse_catch(AsmState& as, int nestLevel) {
   eh.m_past = as.ue->bcPos();
   eh.m_iterId = -1;
 
-  for (size_t i = 0; i < catches.size(); ++i) {
-    as.addLabelEHCatch(catches[i].first,
-                       catches[i].second,
+  for (const auto& eh_catch : catches) {
+    as.addLabelEHCatch(eh_catch.first,
+                       eh_catch.second,
                        as.fe->ehtab.size() - 1);
   }
 }
@@ -1616,7 +1586,7 @@ void parse_function_body(AsmState& as, int nestLevel /* = 0 */) {
     }
 
     // Ok, it better be an opcode now.
-    OpcodeParserMap::const_iterator it = opcode_parsers.find(word);
+    auto it = opcode_parsers.find(word);
     if (it == opcode_parsers.end()) {
       as.error("unrecognized opcode `" + word + "'");
     }
@@ -1699,17 +1669,23 @@ Attr parse_attribute_list(AsmState& as, AttrContext ctx,
 }
 
 /*
- * type-constraint : empty
+ * type-info       : empty
  *                 | '<' maybe-string-literal maybe-string-literal
  *                       type-flag* '>'
  *                 ;
+ * type-constraint : empty
+ *                 | '<' maybe-string-literal
+ *                       type-flag* '>'
+ *                 ;
+ * This parses type-info if noUserType is false, type-constraint if true
  */
-std::pair<const StringData *, TypeConstraint> parse_type_info(AsmState& as) {
+std::pair<const StringData *, TypeConstraint> parse_type_info(
+    AsmState& as, bool noUserType = false) {
   as.in.skipWhitespace();
   if (as.in.peek() != '<') return {};
   as.in.getc();
 
-  const StringData *userType = read_maybe_litstr(as);
+  const StringData *userType = noUserType ? nullptr : read_maybe_litstr(as);
   const StringData *typeName = read_maybe_litstr(as);
 
   std::string word;
@@ -1729,6 +1705,9 @@ std::pair<const StringData *, TypeConstraint> parse_type_info(AsmState& as) {
   }
   as.in.expect('>');
   return std::make_pair(userType, TypeConstraint{typeName, flags});
+}
+TypeConstraint parse_type_constraint(AsmState& as) {
+  return parse_type_info(as, true).second;
 }
 
 
@@ -2142,6 +2121,22 @@ void parse_use(AsmState& as) {
 }
 
 /*
+ * directive-enum_ty : type-constraint ';'
+ *                   ;
+ *
+ */
+void parse_enum_ty(AsmState& as) {
+  if (as.enumTySet) {
+    as.error("only one .enum_ty directive may appear in a given class");
+  }
+  as.enumTySet = true;
+
+  as.pce->setEnumBaseTy(parse_type_constraint(as));
+
+  as.in.expectWs(';');
+}
+
+/*
  * class-body : class-body-line* '}'
  *            ;
  *
@@ -2150,6 +2145,7 @@ void parse_use(AsmState& as) {
  *                 | ".const"        directive-const
  *                 | ".use"          directive-use
  *                 | ".default_ctor" directive-default-ctor
+ *                 | ".enum_ty"      directive-enum-ty
  *                 ;
  */
 void parse_class_body(AsmState& as) {
@@ -2164,6 +2160,7 @@ void parse_class_body(AsmState& as) {
     if (directive == ".const")        { parse_constant(as);     continue; }
     if (directive == ".use")          { parse_use(as);          continue; }
     if (directive == ".default_ctor") { parse_default_ctor(as); continue; }
+    if (directive == ".enum_ty")      { parse_enum_ty(as);      continue; }
 
     as.error("unrecognized directive `" + directive + "' in class");
   }
@@ -2245,8 +2242,8 @@ void parse_class(AsmState& as) {
                attrs,
                makeStaticString(parentName),
                staticEmptyString());
-  for (size_t i = 0; i < ifaces.size(); ++i) {
-    as.pce->addInterface(makeStaticString(ifaces[i]));
+  for (auto const& iface : ifaces) {
+    as.pce->addInterface(makeStaticString(iface));
   }
   as.pce->setUserAttributes(userAttrs);
 
@@ -2316,6 +2313,46 @@ void parse_adata(AsmState& as) {
 }
 
 /*
+ * directive-alias :  attribute-list identifier '=' type-constraint ';'
+ *                 ;
+ *
+ * We represent alias type information using the syntax for
+ * TypeConstraints. We populate the name and nullable field of the
+ * alias directly from the specified type constraint and derive the
+ * AnnotType from the compute AnnotType in the constraint.
+ */
+void parse_alias(AsmState& as) {
+  as.in.skipWhitespace();
+
+  Attr attrs = parse_attribute_list(as, AttrContext::Alias);
+  std::string name;
+  if (!as.in.readname(name)) {
+    as.error(".alias must have a name");
+  }
+  as.in.expectWs('=');
+
+  TypeConstraint ty = parse_type_constraint(as);
+
+  const StringData* typeName = ty.typeName();
+  if (!typeName) typeName = makeStaticString("");
+  const StringData* sname = makeStaticString(name);
+  // Merge to ensure namedentity creation, according to
+  // emitTypedef in emitter.cpp
+  as.ue->mergeLitstr(sname);
+  as.ue->mergeLitstr(typeName);
+
+  TypeAlias record;
+  record.name = sname;
+  record.value = typeName;
+  record.type = ty.type();
+  record.nullable = (ty.flags() & TypeConstraint::Nullable) != 0;
+  record.attrs = attrs;
+  as.ue->addTypeAlias(record);
+
+  as.in.expectWs(';');
+}
+
+/*
  * asm-file : asm-tld* <EOF>
  *          ;
  *
@@ -2324,6 +2361,7 @@ void parse_adata(AsmState& as) {
  *         |    ".function"    directive-function
  *         |    ".adata"       directive-adata
  *         |    ".class"       directive-class
+ *         |    ".alias"       directive-alias
  *         ;
  */
 void parse(AsmState& as) {
@@ -2346,6 +2384,7 @@ void parse(AsmState& as) {
     if (directive == ".function")    { parse_function(as); continue; }
     if (directive == ".adata")       { parse_adata(as);    continue; }
     if (directive == ".class")       { parse_class(as);    continue; }
+    if (directive == ".alias")       { parse_alias(as);    continue; }
 
     as.error("unrecognized top-level directive `" + directive + "'");
   }
@@ -2361,7 +2400,7 @@ void parse(AsmState& as) {
 
 UnitEmitter* assemble_string(const char* code, int codeLen,
                              const char* filename, const MD5& md5) {
-  std::unique_ptr<UnitEmitter> ue(new UnitEmitter(md5));
+  auto ue = folly::make_unique<UnitEmitter>(md5);
   StringData* sd = makeStaticString(filename);
   ue->m_filepath = sd;
 

@@ -143,9 +143,9 @@ void apcExtension::moduleLoad(const IniSetting::Map& ini, Hdf config) {
   FileStorageChunkSize = Config::GetInt64(ini, config,
                                           "Server.APC.FileStorage.ChunkSize",
                                           1LL << 29);
-  FileStorageMaxSize = Config::GetInt64(ini, config,
-                                        "Server.APC.FileStorage.MaxSize",
-                                        1LL << 32);
+  // TODO(markdrayton): remove FileStorageMaxSize once FileStorage.MaxSize has
+  // been removed from config.hdf (see D2360365)
+  Config::GetInt64(ini, config, "Server.APC.FileStorage.MaxSize", 1LL << 32);
   Config::Bind(FileStoragePrefix, ini, config, "Server.APC.FileStorage.Prefix",
                "/tmp/apc_store");
   Config::Bind(FileStorageFlagKey, ini, config,
@@ -175,9 +175,7 @@ void apcExtension::moduleLoad(const IniSetting::Map& ini, Hdf config) {
 
 void apcExtension::moduleInit() {
   if (UseFileStorage) {
-    s_apc_file_storage.enable(FileStoragePrefix,
-                              FileStorageChunkSize,
-                              FileStorageMaxSize);
+    s_apc_file_storage.enable(FileStoragePrefix, FileStorageChunkSize);
   }
 
   REGISTER_CONSTANT(APC_ITER_TYPE);
@@ -241,7 +239,6 @@ bool apcExtension::AllowObj = false;
 int apcExtension::TTLLimit = -1;
 bool apcExtension::UseFileStorage = false;
 int64_t apcExtension::FileStorageChunkSize = int64_t(1LL << 29);
-int64_t apcExtension::FileStorageMaxSize = int64_t(1LL << 32);
 std::string apcExtension::FileStoragePrefix = "/tmp/apc_store";
 int apcExtension::FileStorageAdviseOutPeriod = 1800;
 std::string apcExtension::FileStorageFlagKey = "_madvise_out";
@@ -1407,151 +1404,6 @@ Variant apc_unserialize(const char* data, int len) {
       VariableUnserializer::Type::APCSerialize :
       VariableUnserializer::Type::Serialize;
   return unserialize_ex(data, len, sType);
-}
-
-void reserialize(VariableUnserializer *uns, StringBuffer &buf) {
-
-  char type = uns->readChar();
-  char sep = uns->readChar();
-
-  if (type == 'N') {
-    buf.append(type);
-    buf.append(sep);
-    return;
-  }
-
-  switch (type) {
-  case 'r':
-  case 'R':
-  case 'b':
-  case 'i':
-  case 'd':
-    {
-      buf.append(type);
-      buf.append(sep);
-      while (uns->peek() != ';') {
-        char ch;
-        ch = uns->readChar();
-        buf.append(ch);
-      }
-    }
-    break;
-  case 'S':
-  case 'A':
-    {
-      // shouldn't happen, but keep the code here anyway.
-      buf.append(type);
-      buf.append(sep);
-      char pointer[8];
-      uns->read(pointer, 8);
-      buf.append(pointer, 8);
-    }
-    break;
-  case 's':
-    {
-      String v;
-      v.unserialize(uns);
-      assert(!v.isNull());
-      if (v.get()->isStatic()) {
-        union {
-          char pointer[8];
-          StringData *sd;
-        } u;
-        u.sd = v.get();
-        buf.append("S:");
-        buf.append(u.pointer, 8);
-        buf.append(';');
-      } else {
-        buf.append("s:");
-        buf.append(v.size());
-        buf.append(":\"");
-        buf.append(v.data(), v.size());
-        buf.append("\";");
-      }
-      sep = uns->readChar();
-      return;
-    }
-    break;
-  case 'a':
-    {
-      buf.append("a:");
-      int64_t size = uns->readInt();
-      char sep2 = uns->readChar();
-      buf.append(size);
-      buf.append(sep2);
-      sep2 = uns->readChar();
-      buf.append(sep2);
-      for (int64_t i = 0; i < size; i++) {
-        reserialize(uns, buf); // key
-        reserialize(uns, buf); // value
-      }
-      sep2 = uns->readChar(); // '}'
-      buf.append(sep2);
-      return;
-    }
-    break;
-  case 'o':
-  case 'O':
-  case 'V':
-  case 'K':
-    {
-      buf.append(type);
-      buf.append(sep);
-
-      String clsName;
-      clsName.unserialize(uns);
-      buf.append(clsName.size());
-      buf.append(":\"");
-      buf.append(clsName.data(), clsName.size());
-      buf.append("\":");
-
-      uns->readChar();
-      int64_t size = uns->readInt();
-      char sep2 = uns->readChar();
-
-      buf.append(size);
-      buf.append(sep2);
-      sep2 = uns->readChar(); // '{'
-      buf.append(sep2);
-      // 'V' type is a series with values only, while all other
-      // types are series with keys and values
-      int64_t i = type == 'V' ? size : size * 2;
-      while (i--) {
-        reserialize(uns, buf);
-      }
-      sep2 = uns->readChar(); // '}'
-      buf.append(sep2);
-      return;
-    }
-    break;
-  case 'C':
-    {
-      buf.append(type);
-      buf.append(sep);
-
-      String clsName;
-      clsName.unserialize(uns);
-      buf.append(clsName.size());
-      buf.append(":\"");
-      buf.append(clsName.data(), clsName.size());
-      buf.append("\":");
-
-      sep = uns->readChar(); // ':'
-      String serialized;
-      serialized.unserialize(uns, '{', '}');
-      buf.append(serialized.size());
-      buf.append(":{");
-      buf.append(serialized.data(), serialized.size());
-      buf.append('}');
-      return;
-    }
-    break;
-  default:
-    throw Exception("Unknown type '%c'", type);
-  }
-
-  sep = uns->readChar(); // the last ';'
-  buf.append(sep);
 }
 
 String apc_reserialize(const String& str) {

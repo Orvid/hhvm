@@ -36,7 +36,7 @@
 #include "hphp/runtime/vm/jit/smashable-instr.h"
 #include "hphp/runtime/vm/jit/timer.h"
 #include "hphp/runtime/vm/jit/translator-inline.h"
-#include "hphp/runtime/vm/jit/unique-stubs-x64.h"
+#include "hphp/runtime/vm/jit/unique-stubs.h"
 #include "hphp/runtime/vm/jit/unwind-x64.h"
 #include "hphp/runtime/vm/jit/vasm-emit.h"
 #include "hphp/runtime/vm/jit/vasm-gen.h"
@@ -113,18 +113,6 @@ struct BackEnd final : jit::BackEnd {
       a.  lea(x64::rVmFp[-cellsToBytes(spOff.offset)], x64::rVmSp);
     }
     a.    jmp(mcg->tx().uniqueStubs.interpHelper);
-  }
-
-  bool funcPrologueHasGuard(TCA prologue, const Func* func) override {
-    return x64::funcPrologueHasGuard(prologue, func);
-  }
-
-  TCA funcPrologueToGuard(TCA prologue, const Func* func) override {
-    return x64::funcPrologueToGuard(prologue, func);
-  }
-
-  void funcPrologueSmashGuard(TCA prologue, const Func* func) override {
-    x64::funcPrologueSmashGuard(prologue, func);
   }
 
   void emitIncStat(CodeBlock& cb, intptr_t disp, int n) override {

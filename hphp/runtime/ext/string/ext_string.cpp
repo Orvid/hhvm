@@ -1772,9 +1772,11 @@ static inline uint16_t strtr_hash(const char *str, int len) {
     return res;
 }
 
-#ifdef _MSC_VER
-static int strtr_compare_hash_suffix(void *ctx_g, const void *p_a,
-                                     const void *p_b) {
+#if defined(__APPLE__) || defined(_MSC_VER)
+// OS X (and I think BSD?) have the context argument to this function first, but
+// glibc has it last.
+static int strtr_compare_hash_suffix(void *ctx_g,
+                                     const void *p_a, const void *p_b) {
 #else
 static int strtr_compare_hash_suffix(const void *p_a, const void *p_b,
                                      void *ctx_g) {
@@ -1836,7 +1838,13 @@ void WuManberReplacement::initTables() {
   qsort_r(
 #endif
     &patterns[0], patterns.size(), sizeof(PatAndRepl),
+#ifdef __APPLE__
+    // OS X (and I think BSD?) have the last two arguments to qsort_r reversed
+    // from glibc.
+    &pair, strtr_compare_hash_suffix);
+#else
     strtr_compare_hash_suffix, &pair);
+#endif
 
   {
     uint16_t last_h = -1; // assumes not all bits are used

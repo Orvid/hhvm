@@ -244,7 +244,8 @@ create_link(const char *pfilename,
         }
     }
 #endif
-    fprintf(stderr, "Creating link from %s to %s not supported", pfilename, linkname);
+    fprintf(stderr, "Creating link from %s to %s not supported",
+            pfilename, linkname);
 }
 
 /* Examine the log file name specifier for strftime conversion

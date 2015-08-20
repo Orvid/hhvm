@@ -751,8 +751,8 @@ NEVER_INLINE void copyHashFuncs() {
 # define AT_END_OF_TEXT
 #endif
 
-static void NEVER_INLINE AT_END_OF_TEXT __attribute__((__optimize__("2")))
-hugifyText(char* from, char* to) {
+[[gnu::optimize("2")]] NEVER_INLINE AT_END_OF_TEXT
+static void hugifyText(char* from, char* to) {
 #if FACEBOOK && !defined FOLLY_SANITIZE_ADDRESS && defined MADV_HUGEPAGE
   if (from > to || (to - from) < sizeof(uint64_t)) {
     // This shouldn't happen if HHVM is behaving correctly (I think),
@@ -1370,9 +1370,9 @@ static int execute_program_impl(int argc, char** argv) {
           Logger::Verbose("Using default config file: %s", filename);
           po.config.push_back(filename);
         };
-        add_default_config_files_globbed("/etc/hhvm/php*.ini",
+        add_default_config_files_globbed(DEFAULT_CONFIG_DIR "/php*.ini",
                                          file_callback);
-        add_default_config_files_globbed("/etc/hhvm/config*.hdf",
+        add_default_config_files_globbed(DEFAULT_CONFIG_DIR "/config*.hdf",
                                          file_callback);
       }
 // When we upgrade boost, we can remove this and also get rid of the parent

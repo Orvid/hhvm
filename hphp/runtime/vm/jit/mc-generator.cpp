@@ -624,8 +624,7 @@ MCGenerator::translate(const TranslArgs& args) {
   return start;
 }
 
-TCA
-MCGenerator::getCallArrayPrologue(Func* func) {
+TCA MCGenerator::getFuncBody(Func* func) {
   TCA tca = func->getFuncBody();
   if (tca != m_tx.uniqueStubs.funcBodyHelperThunk) return tca;
 
@@ -636,7 +635,7 @@ MCGenerator::getCallArrayPrologue(Func* func) {
     if (!writer) return nullptr;
     tca = func->getFuncBody();
     if (tca != m_tx.uniqueStubs.funcBodyHelperThunk) return tca;
-    tca = genCallArrayPrologue(func, dvs);
+    tca = genFuncBodyDispatch(func, dvs);
     func->setFuncBody(tca);
   } else {
     SrcKey sk(func, func->base(), false);
@@ -1863,7 +1862,7 @@ MCGenerator::translateWork(const TranslArgs& args) {
     }
 
     auto result = TranslateResult::Retry;
-    auto regionInterps = RegionBlacklist{};
+    TranslateRetryContext retry;
     initSpOffset = region ? region->entry()->initialSpOffset()
                           : liveSpOff();
     while (region && result == TranslateResult::Retry) {
@@ -1882,8 +1881,7 @@ MCGenerator::translateWork(const TranslArgs& args) {
         assertCleanState();
         maker.markStart();
 
-        result = translateRegion(irgs, *region, regionInterps, args.flags,
-                                 pconds);
+        result = translateRegion(irgs, *region, retry, args.flags, pconds);
         hasLoop = RuntimeOption::EvalJitLoops && cfgHasLoop(irgs.unit);
         FTRACE(2, "translateRegion finished with result {}\n", show(result));
       } catch (const std::exception& e) {

@@ -49,7 +49,7 @@ end = struct
     grab_init_lock root;
     wakeup_client options "starting";
     (* note: we only run periodical tasks on the root, not extras *)
-    ServerPeriodical.init root;
+    ServerIdle.init root;
     let env = init_fun () in
     release_init_lock root;
     Hh_logger.log "Server is READY";
@@ -74,7 +74,7 @@ module type SERVER_PROGRAM = sig
   val config_filename : unit -> Relative_path.t
   val load_config : unit -> ServerConfig.t
   val validate_config : genv -> bool
-  val handle_client : genv -> env -> client -> unit
+  val handle_client : genv -> env -> (in_channel * out_channel) -> unit
   (* This is a hack for us to save / restore the global state that is not
    * already captured by ServerEnv *)
   val marshal : out_channel -> unit
@@ -116,7 +116,7 @@ module Program : SERVER_PROGRAM =
       let js_next_files = Find.make_next_files FindUtils.is_js dir in
       fun () -> php_next_files () @ js_next_files ()
 
-    let stamp_file = GlobalConfig.tmp_dir ^ "/stamp"
+    let stamp_file = Filename.concat GlobalConfig.tmp_dir "stamp"
     let touch_stamp () =
       Sys_utils.mkdir_no_fail (Filename.dirname stamp_file);
       Sys_utils.with_umask
@@ -214,12 +214,6 @@ let handle_connection_ genv env socket =
   let cli, _ = Unix.accept socket in
   let ic = Unix.in_channel_of_descr cli in
   let oc = Unix.out_channel_of_descr cli in
-  let close () =
-    begin
-      Unix.shutdown cli Unix.SHUTDOWN_ALL;
-      Unix.close cli
-    end
-  in
   try
     let client_build_id = input_line ic in
     if client_build_id <> Build_id.build_id_ohai then
@@ -227,23 +221,22 @@ let handle_connection_ genv env socket =
        HackEventLogger.out_of_date ();
        Printf.eprintf "Status: Error\n";
        Printf.eprintf "%s is out of date. Exiting.\n" Program.name;
-       exit 4)
+       Exit_status.exit Exit_status.Build_id_mismatch)
     else
       msg_to_channel oc Connection_ok;
-    let client = { ic; oc; close } in
-    Program.handle_client genv env client
+    Program.handle_client genv env (ic, oc)
   with
   | Sys_error("Broken pipe") ->
-    close ()
+    shutdown_client (ic, oc)
   | e ->
     let msg = Printexc.to_string e in
     EventLogger.master_exception msg;
     Printf.fprintf stderr "Error: %s\n%!" msg;
     Printexc.print_backtrace stderr;
-    close ()
+    shutdown_client (ic, oc)
 
 let handle_connection genv env socket =
-  ServerPeriodical.stamp_connection ();
+  ServerIdle.stamp_connection ();
   try handle_connection_ genv env socket
   with
   | Unix.Unix_error (e, _, _) ->
@@ -301,17 +294,16 @@ let serve genv env socket =
     if not (Lock.grab lock_file) then
       (Hh_logger.log "Lost lock; terminating.\n%!";
        HackEventLogger.lock_stolen lock_file;
-       die());
-    ServerPeriodical.call_before_sleeping();
+       Exit_status.(exit Lock_stolen));
     let has_client = sleep_and_check socket in
+    if not has_client && !ServerTypeCheck.hook_after_parsing = None
+    then ServerIdle.go ();
     let start_t = Unix.time () in
     let loop_count, rechecked_count, new_env = recheck_loop genv !env in
     env := new_env;
     if rechecked_count > 0 then
       HackEventLogger.recheck_end start_t loop_count rechecked_count;
     if has_client then handle_connection genv !env socket;
-    ServerEnv.invoke_async_queue ();
-    EventLogger.flush ();
   done
 
 let load genv filename to_recheck =
@@ -441,7 +433,7 @@ let main options config =
      * opening the socket. *)
     if not (Lock.grab (ServerFiles.lock_file root)) then begin
       Hh_logger.log "Error: another server is already running?\n";
-      exit 1;
+      Exit_status.(exit Server_already_exists);
     end;
     (* Open up a server on the socket before we go into MainInit -- the client
      * will try to connect to the socket as soon as we lock the init lock. We

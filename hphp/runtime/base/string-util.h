@@ -147,11 +147,13 @@ public:
    * path part is returned. If it is not, an empty string is returned.
    */
   static String DecodeFileUrl(const String& input);
-
+  
+#ifndef _MSC_VER
   /**
    * Formatting.
    */
   static String MoneyFormat(const char *format, double value);
+#endif
 
   /**
    * Hashing

@@ -22,7 +22,9 @@
 #include "hphp/util/lock.h"
 #include "hphp/util/overflow.h"
 #include <math.h>
+#ifndef _MSC_VER
 #include <monetary.h>
+#endif
 
 #include "hphp/util/bstring.h"
 #include "hphp/runtime/base/exceptions.h"
@@ -1725,6 +1727,7 @@ int string_levenshtein(const char *s1, int l1, const char *s2, int l2,
   return c0;
 }
 
+#ifndef _MSC_VER
 ///////////////////////////////////////////////////////////////////////////////
 
 String string_money_format(const char *format, double value) {
@@ -1753,6 +1756,7 @@ String string_money_format(const char *format, double value) {
   ret.setSize(str_len);
   return ret;
 }
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////
 

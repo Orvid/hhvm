@@ -22,7 +22,7 @@
 #include "hphp/util/lock.h"
 #include "hphp/util/overflow.h"
 #include <math.h>
-#ifdef HAVE_STRFMON
+#ifndef _MSC_VER
 #include <monetary.h>
 #endif
 
@@ -1727,7 +1727,7 @@ int string_levenshtein(const char *s1, int l1, const char *s2, int l2,
   return c0;
 }
 
-#ifdef HAVE_STRFMON
+#ifndef _MSC_VER
 ///////////////////////////////////////////////////////////////////////////////
 
 String string_money_format(const char *format, double value) {

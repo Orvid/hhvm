@@ -713,6 +713,7 @@ void RuntimeOption::ReadSatelliteInfo(
   Config::Iterate(ss_callback, ini, hdf, "Satellites");
 }
 
+extern void initialize_apc();
 void RuntimeOption::Load(
   IniSetting::Map& ini, Hdf& config,
   const std::vector<std::string>& iniClis /* = std::vector<std::string>() */,
@@ -1756,7 +1757,6 @@ void RuntimeOption::Load(
 
 
   ExtensionRegistry::moduleLoad(ini, config);
-  extern void initialize_apc();
   initialize_apc();
 }
 

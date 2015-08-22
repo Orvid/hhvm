@@ -22,7 +22,9 @@
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
+#ifndef _MSC_VER
 #include <unwind.h>
+#endif
 
 #include <algorithm>
 #include <exception>

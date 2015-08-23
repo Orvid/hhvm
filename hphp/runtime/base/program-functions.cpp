@@ -86,6 +86,7 @@
 #include "hphp/util/stack-trace.h"
 #include "hphp/util/timer.h"
 
+#include <folly/CPortability.h>
 #include <folly/Range.h>
 #include <folly/Portability.h>
 #include <folly/Singleton.h>
@@ -96,7 +97,6 @@
 #include <boost/program_options/variables_map.hpp>
 #include <boost/filesystem.hpp>
 
-#include <libgen.h>
 #include <oniguruma.h>
 #include <signal.h>
 #include <libxml/parser.h>

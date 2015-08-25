@@ -1,22 +1,25 @@
 <?php
-var_dump( filter_var_array(
-  array(
-    'zero' => '0',
-    'false' => 'false',
-    'no' => 'no',
-    'off' => 'off',
-    'empty' => '',
-    'null' => null,
-    'false-bool' => false,
+$data = array(
+  'true'     => '1',
+  'false'    => '0',
+  'badbool'  => 'xyzzy',
+  'bademail' => 'foo',
+  'badfloat' => 'idkfa',
+  'badint'   => '42.42',
+  'badip'    => '256.0.0.1',
+);
+
+$args = array(
+  'true'    => FILTER_VALIDATE_BOOLEAN,
+  'false'   => FILTER_VALIDATE_BOOLEAN,
+  'badbool' => array(
+    'filter' => FILTER_VALIDATE_BOOLEAN,
+    'flags'  => FILTER_NULL_ON_FAILURE,
   ),
-  array(
-    'false' => array( 'filter' => FILTER_VALIDATE_BOOLEAN ),
-    'zero' => array( 'filter' => FILTER_VALIDATE_BOOLEAN ),
-    'false' => array( 'filter' => FILTER_VALIDATE_BOOLEAN ),
-    'no' => array( 'filter' => FILTER_VALIDATE_BOOLEAN ),
-    'off' => array( 'filter' => FILTER_VALIDATE_BOOLEAN ),
-    'empty' => array( 'filter' => FILTER_VALIDATE_BOOLEAN ),
-    'null' => array( 'filter' => FILTER_VALIDATE_BOOLEAN ),
-    'false-bool' => array( 'filter' => FILTER_VALIDATE_BOOLEAN ),
-  )
-) );
+  'bademail' => FILTER_VALIDATE_EMAIL,
+  'badfloat' => FILTER_VALIDATE_FLOAT,
+  'badint'   => FILTER_VALIDATE_INT,
+  'badip'    => FILTER_VALIDATE_IP,
+);
+
+var_dump(filter_var_array($data, $args));

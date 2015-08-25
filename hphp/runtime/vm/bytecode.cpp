@@ -6261,6 +6261,7 @@ bool doFCall(ActRec* ar, PC& pc) {
   TRACE(3, "FCall: pc %p func %p base %d\n", vmpc(),
         vmfp()->m_func->unit()->entry(),
         int(vmfp()->m_func->base()));
+  checkStack(vmStack(), ar->m_func, 0);
   prepareFuncEntry(ar, pc, StackArgsState::Untrimmed);
   vmpc() = pc;
   if (EventHook::FunctionCall(ar, EventHook::NormalFunc)) return true;
@@ -6273,7 +6274,6 @@ OPTBLD_INLINE void iopFCall(IOP_ARGS) {
   pc++;
   UNUSED auto numArgs = decode_iva(pc);
   assert(numArgs == ar->numArgs());
-  checkStack(vmStack(), ar->m_func, 0);
   ar->setReturn(vmfp(), pc, mcg->tx().uniqueStubs.retHelper);
   doFCall(ar, pc);
 }
@@ -6289,7 +6289,6 @@ OPTBLD_INLINE void iopFCallD(IOP_ARGS) {
     assert(ar->m_func->name()->isame(funcName));
   }
   assert(numArgs == ar->numArgs());
-  checkStack(vmStack(), ar->m_func, 0);
   ar->setReturn(vmfp(), pc, mcg->tx().uniqueStubs.retHelper);
   doFCall(ar, pc);
 }

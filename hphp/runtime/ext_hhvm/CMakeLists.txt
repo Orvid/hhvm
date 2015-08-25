@@ -83,7 +83,6 @@ list(APPEND CXX_SOURCES ${INFOTABS_SOURCE})
 #
 
 ADD_LIBRARY(ext_hhvm_static STATIC ${CXX_SOURCES})
-target_link_libraries(ext_hhvm_static hphp_runtime_ext)
 SET_TARGET_PROPERTIES(ext_hhvm_static PROPERTIES OUTPUT_NAME "ext_hhvm")
 SET_TARGET_PROPERTIES(ext_hhvm_static PROPERTIES PREFIX "lib")
 SET_TARGET_PROPERTIES(ext_hhvm_static PROPERTIES CLEAN_DIRECT_OUTPUT 1)

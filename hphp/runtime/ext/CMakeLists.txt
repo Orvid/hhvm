@@ -47,7 +47,7 @@ add_precompiled_header(
   PCH_SOURCES
 )
 
-ADD_LIBRARY(hphp_runtime_ext STATIC
+ADD_LIBRARY(hphp_runtime_ext OBJECT
             ${CXX_SOURCES} ${C_SOURCES} ${ASM_SOURCES} ${HEADER_SOURCES}
             ${PCH_SOURCES})
 auto_source_group("hphp_runtime_ext" "${CMAKE_CURRENT_SOURCE_DIR}"
@@ -55,7 +55,5 @@ auto_source_group("hphp_runtime_ext" "${CMAKE_CURRENT_SOURCE_DIR}"
 if (ENABLE_ASYNC_MYSQL)
   add_dependencies(hphp_runtime_ext webscalesqlclient squangle)
 endif ()
-target_link_libraries(hphp_runtime_ext ${HRE_LIBRARIES})
-hphp_link(hphp_runtime_ext)
 
 HHVM_PUBLIC_HEADERS(ext ${HEADER_SOURCES})

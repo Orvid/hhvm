@@ -37,7 +37,7 @@ static Mutex threadMap_lock;
 
 PthreadInfo::PthreadInfo(start_routine_t start, void* arg) :
     start_routine(start), start_routine_arg(arg) {
-  pid = getpid();
+  pid = (pid_t)getpid();
 
   if (RuntimeOption::EvalLogThreadCreateBacktraces) {
     num_frames = backtrace(reinterpret_cast<void **>(&parent_bt),
@@ -93,7 +93,7 @@ void* start_routine_wrapper(void *arg) {
 #ifdef __linux__
   info.tid = syscall(SYS_gettid);
 #else
-  info.tid = getpid();
+  info.tid = (pid_t)getpid();
 #endif
 
   auto ret = info.start_routine(info.start_routine_arg);

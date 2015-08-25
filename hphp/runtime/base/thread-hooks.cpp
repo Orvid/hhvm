@@ -39,6 +39,7 @@ PthreadInfo::PthreadInfo(start_routine_t start, void* arg) :
     start_routine(start), start_routine_arg(arg) {
   pid = (pid_t)getpid();
 
+#ifndef _MSC_VER
   if (RuntimeOption::EvalLogThreadCreateBacktraces) {
     num_frames = backtrace(reinterpret_cast<void **>(&parent_bt),
                            max_num_frames);
@@ -54,11 +55,14 @@ PthreadInfo::PthreadInfo(start_routine_t start, void* arg) :
       Logger::Error("pthread_create: unable to get start_routine name");
     }
   }
+#endif
 }
 
 PthreadInfo::~PthreadInfo() {
+#ifndef _MSC_VER
   free(parent_bt_names);
   free(start_name_ptr);
+#endif
 }
 
 std::string get_thread_mem_usage() {

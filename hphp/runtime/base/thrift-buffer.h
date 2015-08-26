@@ -20,7 +20,7 @@
 #include "hphp/runtime/base/type-string.h"
 #include "hphp/runtime/base/variable-serializer.h"
 
-#include <arpa/inet.h>
+#include <folly/SocketPortability.h>
 #if defined(__FreeBSD__)
 # include <sys/endian.h>
 #elif defined(__APPLE__)

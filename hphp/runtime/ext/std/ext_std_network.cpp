@@ -16,15 +16,12 @@
 */
 #include "hphp/runtime/ext/std/ext_std_network.h"
 
-#include <arpa/inet.h>
 #include <arpa/nameser.h>
-#include <netdb.h>
-#include <netinet/in.h>
 #include <resolv.h>
-#include <sys/socket.h>
 
 #include <folly/IPAddress.h>
 #include <folly/ScopeGuard.h>
+#include <folly/SocketPortability.h>
 
 #include "hphp/runtime/base/builtin-functions.h"
 #include "hphp/runtime/base/file.h"

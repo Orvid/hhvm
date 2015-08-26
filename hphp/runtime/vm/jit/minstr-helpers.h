@@ -115,15 +115,38 @@ inline TypedValue* propCOQ(Class* ctx, ObjectData* base, StringData* key,
 
 //////////////////////////////////////////////////////////////////////
 
-template <KeyType keyType, bool isObj>
-TypedValue cGetPropImpl(Class* ctx, TypedValue* base,
-                        key_type<keyType> key, MInstrState* mis) {
-  TypedValue scratch;
-  TypedValue* result = Prop<true, false, false, isObj, keyType>(
-    scratch, mis->tvRef, ctx, base, key);
-  result = tvToCell(result);
-  tvRefcountedIncRef(result);
+inline TypedValue cGetRefShuffle(const TypedValue& localTvRef,
+                                 const TypedValue* result) {
+  if (LIKELY(result != &localTvRef)) {
+    result = tvToCell(result);
+    tvRefcountedIncRef(result);
+  } else {
+    // If a magic getter or array access method returned by reference, we have
+    // to incref the inner cell and drop our reference to the RefData.
+    // Otherwise we do nothing, since we already own a reference to result.
+    if (UNLIKELY(localTvRef.m_type == KindOfRef)) {
+      auto inner = *localTvRef.m_data.pref->tv();
+      tvRefcountedIncRef(&inner);
+      decRefRef(localTvRef.m_data.pref);
+      return inner;
+    }
+  }
+
   return *result;
+}
+
+template <KeyType keyType, bool isObj>
+TypedValue cGetPropImpl(Class* ctx, TypedValue* base, key_type<keyType> key) {
+  TypedValue scratch;
+  TypedValue localTvRef;
+  auto result = Prop<true, false, false, isObj, keyType>(
+    scratch,
+    localTvRef,
+    ctx,
+    base,
+    key
+  );
+  return cGetRefShuffle(localTvRef, result);
 }
 
 #define CGETPROP_HELPER_TABLE(m)          \
@@ -133,10 +156,9 @@ TypedValue cGetPropImpl(Class* ctx, TypedValue* base,
   m(cGetPropS,    KeyType::Str, false)    \
   m(cGetPropSO,   KeyType::Str,  true)
 
-#define X(nm, kt, isObj)                                          \
-inline TypedValue nm(Class* ctx, TypedValue* base, key_type<kt> key, \
-                     MInstrState* mis) {                           \
-  return cGetPropImpl<kt, isObj>(ctx, base, key, mis);             \
+#define X(nm, kt, isObj)                                               \
+inline TypedValue nm(Class* ctx, TypedValue* base, key_type<kt> key) { \
+  return cGetPropImpl<kt, isObj>(ctx, base, key);                      \
 }
 CGETPROP_HELPER_TABLE(X)
 #undef X
@@ -144,23 +166,19 @@ CGETPROP_HELPER_TABLE(X)
 //////////////////////////////////////////////////////////////////////
 
 // NullSafe prop.
-inline TypedValue cGetPropSQ(Class* ctx, TypedValue* base,
-                             StringData* key, MInstrState* mis) {
+inline TypedValue cGetPropSQ(Class* ctx, TypedValue* base, StringData* key) {
   TypedValue scratch;
-  auto result = nullSafeProp(scratch, mis->tvRef, ctx, base, key);
-  result = tvToCell(result);
-  tvRefcountedIncRef(result);
-  return *result;
+  TypedValue localTvRef;
+  auto result = nullSafeProp(scratch, localTvRef, ctx, base, key);
+  return cGetRefShuffle(localTvRef, result);
 }
 
 // NullSafe prop with object base.
-inline TypedValue cGetPropSOQ(Class* ctx, ObjectData* base,
-                             StringData* key, MInstrState* mis) {
+inline TypedValue cGetPropSOQ(Class* ctx, ObjectData* base, StringData* key) {
   TypedValue scratch;
-  auto result = base->prop(&scratch, &mis->tvRef, ctx, key);
-  result = tvToCell(result);
-  tvRefcountedIncRef(result);
-  return *result;
+  TypedValue localTvRef;
+  auto result = base->prop(&scratch, &localTvRef, ctx, key);
+  return cGetRefShuffle(localTvRef, result);
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -321,8 +339,7 @@ INCDECPROP_HELPER_TABLE(X)
 //////////////////////////////////////////////////////////////////////
 
 template <bool useEmpty, bool isObj>
-bool issetEmptyPropImpl(Class* ctx, TypedValue* base,
-                        TypedValue key) {
+bool issetEmptyPropImpl(Class* ctx, TypedValue* base, TypedValue key) {
   return HPHP::IssetEmptyProp<useEmpty, isObj>(ctx, base, key);
 }
 
@@ -343,8 +360,7 @@ ISSET_EMPTY_PROP_HELPER_TABLE(X)
 
 //////////////////////////////////////////////////////////////////////
 
-template <KeyType keyType, bool warn, bool define, bool reffy,
-          bool unset>
+template <KeyType keyType, bool warn, bool define, bool reffy, bool unset>
 TypedValue* elemImpl(TypedValue* base,
                      key_type<keyType> key,
                      MInstrState* mis) {
@@ -479,13 +495,11 @@ ARRAYGET_HELPER_TABLE(X)
 //////////////////////////////////////////////////////////////////////
 
 template <KeyType keyType>
-TypedValue cGetElemImpl(TypedValue* base, key_type<keyType> key,
-                        MInstrState* mis) {
+TypedValue cGetElemImpl(TypedValue* base, key_type<keyType> key) {
   TypedValue scratch;
-  auto result = Elem<true, keyType>(scratch, mis->tvRef, base, key);
-  result = tvToCell(result);
-  tvRefcountedIncRef(result);
-  return *result;
+  TypedValue localTvRef;
+  auto result = Elem<true, keyType>(scratch, localTvRef, base, key);
+  return cGetRefShuffle(localTvRef, result);
 }
 
 #define CGETELEM_HELPER_TABLE(m)                \
@@ -495,8 +509,8 @@ TypedValue cGetElemImpl(TypedValue* base, key_type<keyType> key,
   m(cGetElemS,  KeyType::Str)
 
 #define X(nm, kt)                                                       \
-inline TypedValue nm(TypedValue* base, key_type<kt> key, MInstrState* mis) { \
-  return cGetElemImpl<kt>(base, key, mis);                              \
+inline TypedValue nm(TypedValue* base, key_type<kt> key) {              \
+  return cGetElemImpl<kt>(base, key);                                   \
 }
 CGETELEM_HELPER_TABLE(X)
 #undef X
@@ -656,12 +670,8 @@ UNSET_ELEM_HELPER_TABLE(X)
 
 //////////////////////////////////////////////////////////////////////
 template <KeyType keyType, bool isEmpty>
-bool issetEmptyElemImpl(TypedValue* base,
-                        key_type<keyType> key,
-                        MInstrState* mis) {
-  // mis == nullptr if we proved that it won't be used.  mis->tvRef is ok
-  // because it gets passed by reference.
-  return HPHP::IssetEmptyElem<isEmpty, keyType>(mis->tvRef, base, key);
+bool issetEmptyElemImpl(TypedValue* base, key_type<keyType> key) {
+  return HPHP::IssetEmptyElem<isEmpty, keyType>(base, key);
 }
 
 #define ISSET_EMPTY_ELEM_HELPER_TABLE(m)        \
@@ -671,11 +681,11 @@ bool issetEmptyElemImpl(TypedValue* base,
   m(issetElemI,   KeyType::Int, false)          \
   m(issetElemIE,  KeyType::Int,  true)          \
   m(issetElemS,   KeyType::Str, false)          \
-  m(issetElemSE,  KeyType::Str,  true)
+  m(issetElemSE,  KeyType::Str,  true)          \
 
-#define X(nm, kt, isEmpty)                                              \
-inline uint64_t nm(TypedValue* base, key_type<kt> key, MInstrState* mis) { \
-  return issetEmptyElemImpl<kt, isEmpty>(base, key, mis);               \
+#define X(nm, kt, isEmpty)                                \
+inline uint64_t nm(TypedValue* base, key_type<kt> key) {  \
+  return issetEmptyElemImpl<kt, isEmpty>(base, key);      \
 }
 ISSET_EMPTY_ELEM_HELPER_TABLE(X)
 #undef X

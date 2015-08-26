@@ -59,10 +59,6 @@ struct Exception : std::exception {
     Deleter deleter(this);
     throw *this;
   }
-  virtual void vscan(IMarker&) const {
-    // not pure virtual because many subclasses don't hold req ptrs.
-  }
-  template<class F> void scan(F& mark) const;
 
   /**
    * Error message without stacktrace.

@@ -4907,7 +4907,6 @@ OPTBLD_INLINE void isSetEmptyM(PC& pc) {
     case MET:
     case MEI: {
       isSetEmptyResult = IssetEmptyElem<isEmpty>(
-        *mstate.ref.asTypedValue(),
         mstate.base,
         *mstate.curMember
       );
@@ -4917,7 +4916,7 @@ OPTBLD_INLINE void isSetEmptyM(PC& pc) {
     case MPC:
     case MPT:
     case MQT: {
-      Class* ctx = arGetContextClass(vmfp());
+      auto const ctx = arGetContextClass(vmfp());
       isSetEmptyResult = IssetEmptyProp<isEmpty>(
         ctx,
         mstate.base,

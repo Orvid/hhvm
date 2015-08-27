@@ -85,7 +85,7 @@ private:
   bool m_silent{false};
   MemoryManager::ExceptionRootKey m_key;
 
-  friend class MemoryManager;
+  friend struct MemoryManager;
 };
 
 struct FatalErrorException : ExtendedException {

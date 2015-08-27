@@ -656,7 +656,7 @@ namespace HPHP {
 ///////////////////////////////////////////////////////////////////////////////
 
 template <typename When>
-struct OptWorker;
+class OptWorker;
 
 template <typename When>
 struct OptVisitor {

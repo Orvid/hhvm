@@ -46,7 +46,7 @@ add_precompiled_header(
   CXX_SOURCES
 )
 
-ADD_LIBRARY(hphp_runtime_ext STATIC
+ADD_LIBRARY(hphp_runtime_ext OBJECT
             ${CXX_SOURCES} ${C_SOURCES} ${ASM_SOURCES} ${HEADER_SOURCES})
 auto_source_group("hphp_runtime_ext" "${CMAKE_CURRENT_SOURCE_DIR}"
   ${ASM_SOURCES} ${C_SOURCES} ${CXX_SOURCES} ${HEADER_SOURCES})

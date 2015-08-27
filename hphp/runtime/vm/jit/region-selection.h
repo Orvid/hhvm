@@ -63,8 +63,8 @@ enum class PGORegionMode {
  */
 struct RegionDesc {
   struct Block;
-  class Arc;
-  class Location;
+  struct Arc;
+  struct Location;
   struct TypedLocation;
   struct ReffinessPred;
   using BlockPtr = std::shared_ptr<Block>;

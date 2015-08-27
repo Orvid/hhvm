@@ -56,14 +56,14 @@ namespace HPHP {
 
 class c_AsyncFunctionWaitHandle;
 class c_AsyncGeneratorWaitHandle;
-class c_AwaitAllWaitHandle;
+struct c_AwaitAllWaitHandle;
 class c_GenArrayWaitHandle;
 class c_GenMapWaitHandle;
 class c_GenVectorWaitHandle;
 class c_ConditionWaitHandle;
 class c_RescheduleWaitHandle;
 class c_SleepWaitHandle;
-class c_ExternalThreadEventWaitHandle;
+struct c_ExternalThreadEventWaitHandle;
 class c_WaitHandle : public ExtObjectDataFlags<ObjectData::IsWaitHandle|
                                                ObjectData::NoDestructor> {
  public:

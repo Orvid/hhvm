@@ -26,7 +26,7 @@
 namespace HPHP { struct StringData; }
 namespace HPHP { namespace jit {
 
-struct SSATmp;
+class SSATmp;
 
 //////////////////////////////////////////////////////////////////////
 

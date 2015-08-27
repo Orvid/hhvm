@@ -28,7 +28,7 @@ namespace HPHP { namespace jit {
 
 struct GuardConstraints;
 struct IRUnit;
-struct SSATmp;
+class SSATmp;
 
 enum RelaxGuardsFlags {
   RelaxNormal =      0,

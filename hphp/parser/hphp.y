@@ -2364,9 +2364,15 @@ fully_qualified_class_name:
 ;
 static_class_name:
     fully_qualified_class_name         { _p->onName($$,$1,Parser::StringName);}
+  | common_scalar                      { _p->onName($$,$1,Parser::StringName);}
   | T_STATIC                           { _p->onName($$,$1,Parser::StaticName);}
   | reference_variable                 { _p->onName($$,$1,
                                          Parser::StaticClassExprName);}
+  | '(' expr_no_variable ')'           { _p->onName($$,$2,
+                                         Parser::StaticClassExprName);}
+  | static_class_name
+    T_DOUBLE_COLON
+    variable_no_objects                { _p->onStaticMember($$,$1,$3);}
 ;
 class_name_reference:
     fully_qualified_class_name         { _p->onName($$,$1,Parser::StringName);}
@@ -2670,23 +2676,8 @@ dimmable_variable_no_calls_access:
     array_access                       { _p->onRefDim($$, $2, $4);}
 ;
 
-variable:
-    variable_no_objects                { $$ = $1;}
-  | simple_function_call               { $$ = $1;}
-  | object_method_call                 { $$ = $1;}
-  | class_method_call                  { $$ = $1;}
-  | dimmable_variable_access           { $$ = $1;}
-  | variable object_operator
-    object_property_name            { _p->onObjectProperty(
-                                        $$,
-                                        $1,
-                                        !$2.num()
-                                          ? HPHP::PropAccessType::Normal
-                                          : HPHP::PropAccessType::NullSafe,
-                                        $3
-                                      );
-                                    }
-  | '(' expr_with_parens ')'
+object_property_access_on_expr:
+    '(' expr_with_parens ')'
     object_operator
     object_property_name            { _p->onObjectProperty(
                                         $$,
@@ -2695,6 +2686,63 @@ variable:
                                           ? HPHP::PropAccessType::Normal
                                           : HPHP::PropAccessType::NullSafe,
                                         $5
+                                      );
+                                    }
+  | '(' expr_no_variable ')'
+    object_operator
+    object_property_name            { _p->onObjectProperty(
+                                        $$,
+                                        $2,
+                                        !$4.num()
+                                          ? HPHP::PropAccessType::Normal
+                                          : HPHP::PropAccessType::NullSafe,
+                                        $5
+                                      );
+                                    }
+;
+
+object_property_access_on_expr_no_variables:
+    '(' expr_with_parens ')'
+    object_operator
+    object_property_name_no_variables
+                                    { _p->onObjectProperty(
+                                        $$,
+                                        $2,
+                                        !$4.num()
+                                          ? HPHP::PropAccessType::Normal
+                                          : HPHP::PropAccessType::NullSafe,
+                                        $5
+                                      );
+                                    }
+  | '(' expr_no_variable ')'
+    object_operator
+    object_property_name_no_variables
+                                    { _p->onObjectProperty(
+                                        $$,
+                                        $2,
+                                        !$4.num()
+                                          ? HPHP::PropAccessType::Normal
+                                          : HPHP::PropAccessType::NullSafe,
+                                        $5
+                                      );
+                                    }
+;
+
+variable:
+    variable_no_objects                { $$ = $1;}
+  | simple_function_call               { $$ = $1;}
+  | object_method_call                 { $$ = $1;}
+  | class_method_call                  { $$ = $1;}
+  | dimmable_variable_access           { $$ = $1;}
+  | object_property_access_on_expr     { $$ = $1;}
+  | variable object_operator
+    object_property_name            { _p->onObjectProperty(
+                                        $$,
+                                        $1,
+                                        !$2.num()
+                                          ? HPHP::PropAccessType::Normal
+                                          : HPHP::PropAccessType::NullSafe,
+                                        $3
                                       );
                                     }
   | static_class_name
@@ -2723,18 +2771,7 @@ dimmable_variable:
                                         $3
                                       );
                                     }
-  | '(' expr_with_parens ')'
-    object_operator
-    object_property_name_no_variables
-                                    { _p->onObjectProperty(
-                                        $$,
-                                        $2,
-                                        !$4.num()
-                                          ? HPHP::PropAccessType::Normal
-                                          : HPHP::PropAccessType::NullSafe,
-                                        $5
-                                      );
-                                    }
+  | object_property_access_on_expr_no_variables { $$ = $1;}
   | callable_variable '('
     function_call_parameter_list ')'   { _p->onCall($$,1,$1,$3,NULL);}
   | '(' variable ')'                   { $$ = $2;}
@@ -2743,7 +2780,15 @@ dimmable_variable:
 callable_variable:
     variable_no_objects                { $$ = $1;}
   | dimmable_variable_access           { $$ = $1;}
+  | simple_function_call               { $$ = $1;}
+  | array_literal                      { $$ = $1;}
+  | common_scalar                      { $$ = $1;}
   | '(' variable ')'                   { $$ = $2;}
+  | '(' expr_no_variable ')'           { $$ = $2;}
+  | lambda_or_closure_with_parens '('
+    function_call_parameter_list ')'   { _p->onCall($$,1,$1,$3,NULL);}
+  | callable_variable '('
+    function_call_parameter_list ')'   { _p->onCall($$,1,$1,$3,NULL);}
 ;
 
 lambda_or_closure_with_parens:
@@ -2809,6 +2854,7 @@ simple_indirect_reference:
 variable_no_calls:
     variable_no_objects                { $$ = $1;}
   | dimmable_variable_no_calls_access  { $$ = $1;}
+  | object_property_access_on_expr     { $$ = $1;}
   | variable_no_calls
     object_operator
     object_property_name            { _p->onObjectProperty(
@@ -2820,17 +2866,6 @@ variable_no_calls:
                                         $3
                                       );
                                     }
-  | '(' expr_with_parens ')'
-    object_operator
-    object_property_name            { _p->onObjectProperty(
-                                        $$,
-                                        $2,
-                                        !$4.num()
-                                          ? HPHP::PropAccessType::Normal
-                                          : HPHP::PropAccessType::NullSafe,
-                                        $5
-                                      );
-                                    }
   | static_class_name
     T_DOUBLE_COLON
     variable_no_objects                { _p->onStaticMember($$,$1,$3);}
@@ -2839,6 +2874,7 @@ variable_no_calls:
 
 dimmable_variable_no_calls:
   | dimmable_variable_no_calls_access  { $$ = $1;}
+  | object_property_access_on_expr_no_variables { $$ = $1;}
   | variable_no_calls object_operator
     object_property_name_no_variables
                                     { _p->onObjectProperty(
@@ -2848,18 +2884,6 @@ dimmable_variable_no_calls:
                                           ? HPHP::PropAccessType::Normal
                                           : HPHP::PropAccessType::NullSafe,
                                         $3
-                                      );
-                                    }
-  | '(' expr_with_parens ')'
-    object_operator
-    object_property_name_no_variables
-                                    { _p->onObjectProperty(
-                                        $$,
-                                        $2,
-                                        !$4.num()
-                                          ? HPHP::PropAccessType::Normal
-                                          : HPHP::PropAccessType::NullSafe,
-                                        $5
                                       );
                                     }
   | '(' variable ')'                   { $$ = $2;}

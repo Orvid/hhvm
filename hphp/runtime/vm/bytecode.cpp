@@ -1443,7 +1443,7 @@ VarEnv* ExecutionContext::getOrCreateVarEnv(int frame) {
 
 VarEnv* ExecutionContext::hasVarEnv(int frame) {
   auto const fp = getFrameAtDepth(frame);
-  if (fp->func()->attrs() & AttrMayUseVV) {
+  if (fp && (fp->func()->attrs() & AttrMayUseVV)) {
     if (fp->hasVarEnv()) return fp->getVarEnv();
   }
   return nullptr;

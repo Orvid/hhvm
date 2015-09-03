@@ -39,7 +39,7 @@ let read_process_output name args =
   let line = input_line out_inch in
   match Unix.waitpid [] pid with
   | _, Unix.WEXITED 0 -> line
-  | _ -> exit 1
+  | _ -> raise (Failure line)
 
 let string_of_file filename =
   with_in_channel filename @@ fun ic ->
@@ -53,14 +53,3 @@ let string_of_file filename =
     end in
   iter ic b s;
   Buffer.contents b
-
-let () =
-  let out_file = Sys.argv.(1) in
-  let rev = read_process_output "git" [|"git"; "rev-parse"; "HEAD"|] in
-  let content =
-    Printf.sprintf "const char* const BuildInfo_kRevision = %S;\n" rev in
-  let do_dump =
-    not (Sys.file_exists out_file) || string_of_file out_file <> content in
-  if do_dump then
-    with_out_channel out_file @@ fun oc ->
-    output_string oc content

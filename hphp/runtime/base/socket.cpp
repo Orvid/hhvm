@@ -30,16 +30,7 @@
 namespace HPHP {
 ///////////////////////////////////////////////////////////////////////////////
 
-struct SocketState final : RequestEventHandler {
-  SocketState() : m_lastErrno(0) {}
-  void clear() { m_lastErrno = 0; }
-  void requestInit() override { clear(); }
-  void requestShutdown() override { clear(); }
-  void vscan(IMarker&) const override {}
-  int m_lastErrno;
-};
-
-IMPLEMENT_STATIC_REQUEST_LOCAL(SocketState, s_socket_state);
+__thread int Socket::s_lastErrno;
 
 ///////////////////////////////////////////////////////////////////////////////
 // constructors and destructor
@@ -101,9 +92,9 @@ Socket::Socket(std::shared_ptr<SocketData> data,
     tv.tv_usec = (timeout - tv.tv_sec) * 1e6;
   }
   setsockopt(getFd(), SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-  s_socket_state->m_lastErrno = errno;
+  s_lastErrno = errno;
   setsockopt(getFd(), SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
-  s_socket_state->m_lastErrno = errno;
+  s_lastErrno = errno;
   setTimeout(tv);
   setIsLocal(type == AF_UNIX);
 
@@ -130,11 +121,7 @@ void Socket::sweep() {
 ///////////////////////////////////////////////////////////////////////////////
 
 void Socket::setError(int err) {
-  s_socket_state->m_lastErrno = m_data->m_error = err;
-}
-
-int Socket::getLastError() {
-  return s_socket_state->m_lastErrno;
+  s_lastErrno = m_data->m_error = err;
 }
 
 bool Socket::open(const String& filename, const String& mode) {

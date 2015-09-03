@@ -192,7 +192,15 @@ class SplFixedArray implements \HH\Iterator, ArrayAccess, Countable {
    * @return     mixed   No value is returned.
    */
   public function setSize($size) {
+    if (is_bool($size) || is_float($size) || $size === null) {
+      $size = (int) $size;
+    }
     if (!is_numeric($size)) {
+      trigger_error(
+        sprintf("SplFixedArray::setSize() expects parameter 1 to be long,".
+                " %s given", gettype($size)
+               ),
+        E_WARNING);
       return;
     }
     if ($size < 0) {
@@ -245,15 +253,20 @@ class SplFixedArray implements \HH\Iterator, ArrayAccess, Countable {
    */
   public static function fromArray($array, $save_indexes = true) {
     $fixed_array = new self;
+    if (!is_array($array)) {
+      trigger_error(
+        sprintf("SplFixedArray::fromArray() expects parameter 1 to be array,".
+                " %s given", gettype($array)),
+        E_WARNING);
+      return $fixed_array;
+    }
     if ($save_indexes) {
+      $fixed_array->setSize(max(array_keys($array)) + 1);
       foreach ($array as $key => $value) {
         if (!is_numeric($key) || $key < 0) {
           throw new InvalidArgumentException(
             'array must contain only positive integer keys'
           );
-        }
-        if ($key >= $fixed_array->count()) {
-          $fixed_array->setSize($key + 1);
         }
         $fixed_array[$key] = $value;
       }

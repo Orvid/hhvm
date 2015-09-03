@@ -1403,6 +1403,7 @@ TCA MCGenerator::handleBindCall(TCA toSmash,
 }
 
 TCA MCGenerator::handleResume(bool interpFirst) {
+  assert_native_stack_aligned();
   FTRACE(1, "handleResume({})\n", interpFirst);
 
   if (!vmRegsUnsafe().pc) return m_tx.uniqueStubs.callToExit;

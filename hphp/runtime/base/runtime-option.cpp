@@ -74,7 +74,6 @@ bool RuntimeOption::EnableShortTags = true;
 bool RuntimeOption::EnableAspTags = false;
 bool RuntimeOption::EnableXHP = false;
 bool RuntimeOption::EnableObjDestructCall = true;
-bool RuntimeOption::EnableEmitSwitch = true;
 bool RuntimeOption::EnableEmitterStats = true;
 bool RuntimeOption::EnableIntrinsicsExtension = false;
 bool RuntimeOption::CheckSymLink = true;
@@ -386,6 +385,14 @@ const std::string& RuntimeOption::GetServerPrimaryIPv4() {
 const std::string& RuntimeOption::GetServerPrimaryIPv6() {
    static std::string serverPrimaryIPv6 = GetPrimaryIPv6();
    return serverPrimaryIPv6;
+}
+
+static inline bool newMInstrsDefault() {
+#ifdef HHVM_NEW_MINSTRS
+  return true;
+#else
+  return false;
+#endif
 }
 
 static inline std::string regionSelectorDefault() {
@@ -1038,7 +1045,6 @@ void RuntimeOption::Load(
                                      EvalProfileHWEvents.size()).toCppString(),
                           EvalRecordSubprocessTimes);
 
-    Config::Bind(EnableEmitSwitch, ini, config, "Eval.EnableEmitSwitch", true);
     Config::Bind(EnableEmitterStats, ini, config, "Eval.EnableEmitterStats",
                  EnableEmitterStats);
     Config::Bind(EnableIntrinsicsExtension, ini,

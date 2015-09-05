@@ -74,9 +74,7 @@ AliasClass pointee(const SSATmp* ptr) {
 
     if (typeNR <= TPtrToMISGen) {
       if (sinst->is(LdMIStateAddr)) {
-        return AliasClass {
-          AMIState { safe_cast<int32_t>(sinst->src(1)->intVal()) }
-        };
+        return AliasClass { AMIState::fromTV(sinst->src(0)->intVal()) };
       }
       return AMIStateAny;
     }
@@ -275,8 +273,8 @@ GeneralEffects iter_effects(const IRInstruction& inst,
  */
 GeneralEffects interp_one_effects(const IRInstruction& inst) {
   auto const extra  = inst.extra<InterpOne>();
-  auto const loads  = AHeapAny | AStackAny | AFrameAny;
-  AliasClass stores = AHeapAny | AStackAny;
+  auto loads  = AHeapAny | AStackAny | AFrameAny;
+  auto stores = AHeapAny | AStackAny;
   if (extra->smashesAllLocals) {
     stores = stores | AFrameAny;
   } else {
@@ -284,7 +282,19 @@ GeneralEffects interp_one_effects(const IRInstruction& inst) {
       stores = stores | AFrame { inst.src(1), extra->changedLocals[i].id };
     }
   }
-  return may_raise(inst, may_load_store_kill(loads, stores, AMIStateAny));
+
+  auto kills = AEmpty;
+  if (isMemberBaseOp(extra->opcode)) {
+    stores = stores | AMIStateAny;
+    kills = kills | AMIStateAny;
+  } else if (isMemberDimOp(extra->opcode) || isMemberFinalOp(extra->opcode)) {
+    stores = stores | AMIStateAny;
+    loads = loads | AMIStateAny;
+  } else {
+    kills = kills | AMIStateAny;
+  }
+
+  return may_raise(inst, may_load_store_kill(loads, stores, kills));
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -301,8 +311,7 @@ MemEffects memory_effects_impl(const IRInstruction& inst) {
   case ReqBindJmp:
     return ExitEffects {
       AUnknown,
-      *stack_below(inst.src(0), inst.extra<ReqBindJmp>()->irSPOff.offset - 1).
-        precise_union(AMIStateAny)
+      stack_below(inst.src(0), inst.extra<ReqBindJmp>()->irSPOff.offset - 1)
     };
   case JmpSwitchDest:
     return ExitEffects {
@@ -368,8 +377,8 @@ MemEffects memory_effects_impl(const IRInstruction& inst) {
 
   case AsyncRetCtrl:
     return ReturnEffects {
-      stack_below(inst.src(0), inst.extra<AsyncRetCtrl>()->offset.offset - 1) |
-        AMIStateAny
+      *stack_below(inst.src(0), inst.extra<AsyncRetCtrl>()->offset.offset - 1).
+        precise_union(AMIStateAny)
     };
 
   case GenericRetDecRefs:
@@ -388,8 +397,7 @@ MemEffects memory_effects_impl(const IRInstruction& inst) {
   case EndCatch:
     return ExitEffects {
       AUnknown,
-      stack_below(inst.src(1), inst.extra<EndCatch>()->offset.offset - 1) |
-        AMIStateAny
+      stack_below(inst.src(1), inst.extra<EndCatch>()->offset.offset - 1)
     };
 
   /*
@@ -613,16 +621,30 @@ MemEffects memory_effects_impl(const IRInstruction& inst) {
   case StElem:
     return PureStore {
       inst.src(0)->type() <= TPtrToRMembCell
-        ? AHeapAny | AMIStateAny
+        ? AHeapAny
         : AUnknown,
       inst.src(2)
     };
   case LdElem:
     return PureLoad {
       inst.src(0)->type() <= TPtrToRMembCell
-        ? AHeapAny | AMIStateAny
+        ? AHeapAny
         : AUnknown
     };
+
+  case LdMBase:
+    return PureLoad {
+      AMIState::fromPtr(offsetof(MInstrState, base))
+    };
+
+  case StMBase:
+    return PureStore {
+      AMIState::fromPtr(offsetof(MInstrState, base)),
+      inst.src(0)
+    };
+
+  case FinishMemberOp:
+    return may_load_store_kill(AEmpty, AEmpty, AMIStateAny);
 
   case BoxPtr:
     {
@@ -711,8 +733,6 @@ MemEffects memory_effects_impl(const IRInstruction& inst) {
    * from if present.
    */
   case CGetElem:
-  case ElemArray:
-  case ElemArrayW:
   case ElemX:
   case EmptyElem:
   case IssetElem:
@@ -948,7 +968,6 @@ MemEffects memory_effects_impl(const IRInstruction& inst) {
   case ClsNeq:
   case Mod:
   case Conjure:
-  case DefMIStateBase:
   case Halt:
   case ConvBoolToInt:
   case ConvBoolToDbl:
@@ -1253,6 +1272,8 @@ MemEffects memory_effects_impl(const IRInstruction& inst) {
   case ArrayIsset:     // kVPackedKind warnings
   case ArraySet:       // kVPackedKind warnings
   case ArraySetRef:    // kVPackedKind warnings
+  case ElemArray:
+  case ElemArrayW:
   case GetMemoKey:     // re-enters to call getInstanceKey() in some cases
   case LdClsCtor:
   case ConcatStrStr:

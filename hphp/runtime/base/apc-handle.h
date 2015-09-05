@@ -25,19 +25,9 @@
 
 #include "hphp/runtime/base/type-variant.h"
 
-#if (defined(__APPLE__) || defined(__APPLE_CC__)) && (defined(__BIG_ENDIAN__) || defined(__LITTLE_ENDIAN__))
-# if defined(__LITTLE_ENDIAN__)
-#  undef WORDS_BIGENDIAN
-# else
-#  if defined(__BIG_ENDIAN__)
-#   define WORDS_BIGENDIAN
-#  endif
-# endif
-#endif
-
 namespace HPHP {
 
-///////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////
 
 /*
  * An APCHandle is the externally visible handle for in-memory APC values.  The
@@ -90,12 +80,18 @@ struct APCHandle {
     size_t size;
   };
 
+  explicit APCHandle(DataType type) : m_type(type) {}
+  APCHandle(const APCHandle&) = delete;
+  APCHandle& operator=(APCHandle const&) = delete;
+
   /*
    * Create an instance of an APC object according to the type of source and
    * the various flags. This is the only entry point to create APC entities.
    */
-  static Pair Create(const Variant& source, bool serialized,
-                     bool inner = false, bool unserializeObj = false);
+  static Pair Create(const Variant& source,
+                     bool serialized,
+                     bool inner,
+                     bool unserializeObj);
 
   /*
    * Memory management API.
@@ -199,16 +195,6 @@ private:
   constexpr static uint8_t FAPCCollection   = 1 << 4;
 
 private:
-  friend class APCTypedValue;
-  friend struct APCString;
-  friend struct APCArray;
-  friend struct APCObject;
-  friend struct APCCollection;
-  explicit APCHandle(DataType type) : m_type(type) {}
-  APCHandle(const APCHandle&) = delete;
-  APCHandle& operator=(APCHandle const&) = delete;
-
-private:
   void realIncRef() const {
     assert(isRefcountedType(m_type));
     ++m_count;
@@ -232,7 +218,8 @@ private:
   mutable std::atomic<uint32_t> m_count{1};
 };
 
-///////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////
+
 }
 
 #endif

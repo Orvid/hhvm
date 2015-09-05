@@ -59,6 +59,7 @@ NOOP_OPCODE(EndGuards)
 NOOP_OPCODE(HintLocInner)
 NOOP_OPCODE(HintStkInner)
 NOOP_OPCODE(DbgTraceCall)
+NOOP_OPCODE(FinishMemberOp)
 
 // When implemented this shouldn't be a nop, but there's no reason to make us
 // punt on everything until then.
@@ -506,7 +507,6 @@ PUNT_OPCODE(IterFree)
 PUNT_OPCODE(MIterFree)
 PUNT_OPCODE(DecodeCufIter)
 PUNT_OPCODE(CIterFree)
-PUNT_OPCODE(DefMIStateBase)
 PUNT_OPCODE(BaseG)
 PUNT_OPCODE(PropX)
 PUNT_OPCODE(PropQ)
@@ -574,6 +574,8 @@ PUNT_OPCODE(PackMagicArgs)
 PUNT_OPCODE(ProfileSwitchDest)
 PUNT_OPCODE(CheckSurpriseAndStack)
 PUNT_OPCODE(IsCol)
+PUNT_OPCODE(LdMBase)
+PUNT_OPCODE(StMBase)
 
 #undef PUNT_OPCODE
 

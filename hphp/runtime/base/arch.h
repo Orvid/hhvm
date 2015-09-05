@@ -32,16 +32,21 @@ inline Arch arch() {
   return Arch::X64;
 }
 
+// MSVC's Preprocessor is completely idiotic, so we have to play by its
+// rules and forcefully expand the variadic args so they aren't all
+// interpreted as the first argument to func.
+#define MSVC_GLUE(x, y) x y
+
 /*
  * Macro for defining easy arch-dispatch wrappers.
  */
-#define ARCH_SWITCH_CALL(func, ...)  \
-  switch (arch()) {                       \
-    case Arch::X64:                       \
-      return x64::func(__VA_ARGS__);      \
-    case Arch::ARM:                       \
-      return arm::func(__VA_ARGS__);      \
-  }                                       \
+#define ARCH_SWITCH_CALL(func, ...)               \
+  switch (arch()) {                               \
+    case Arch::X64:                               \
+      return x64::MSVC_GLUE(func, (__VA_ARGS__)); \
+    case Arch::ARM:                               \
+      return arm::MSVC_GLUE(func, (__VA_ARGS__)); \
+  }                                               \
   not_reached();
 
 ///////////////////////////////////////////////////////////////////////////////

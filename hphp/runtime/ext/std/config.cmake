@@ -12,6 +12,7 @@ HHVM_DEFINE_EXTENSION("std" REQUIRED
     ext_std_network.cpp
     ext_std_options.cpp
     ext_std_output.cpp
+    ext_std_process.cpp
     ext_std_string.cpp
     ext_std_variable.cpp
   HEADERS
@@ -26,6 +27,7 @@ HHVM_DEFINE_EXTENSION("std" REQUIRED
     ext_std_network.h
     ext_std_options.h
     ext_std_output.h
+    ext_std_process.h
     ext_std_string.h
     ext_std_variable.h
   SYSTEMLIB
@@ -40,6 +42,7 @@ HHVM_DEFINE_EXTENSION("std" REQUIRED
     ext_std_network.php
     ext_std_options.php
     ext_std_output.php
+    ext_std_process.php
     ext_std_string.php
     ext_std_variable.php
   DEPENDS

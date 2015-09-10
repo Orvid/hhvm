@@ -92,7 +92,7 @@ String File::TranslatePathKeepRelative(const char* filename, uint32_t size) {
     }
 
     // disallow access with an absolute path
-    if (canonicalized.charAt(0) == '/') {
+    if (FileUtil::isAbsolutePath(canonicalized)) {
       return empty_string();
     }
 
@@ -107,7 +107,7 @@ String File::TranslatePathKeepRelative(const char* filename, uint32_t size) {
 }
 
 String File::TranslatePath(const String& filename) {
-  if (filename.charAt(0) != '/') {
+  if (!FileUtil::isAbsolutePath(filename)) {
     String cwd = g_context->getCwd();
     return TranslatePathKeepRelative(cwd + "/" + filename);
   }

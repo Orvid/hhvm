@@ -392,13 +392,8 @@ struct ObjectData {
   TypedValue* setOpProp(TypedValue& tvRef, Class* ctx, SetOpOp op,
                         const StringData* key, Cell* val);
 
-  template <bool setResult>
-  void incDecProp(
-    Class* ctx,
-    IncDecOp op,
-    const StringData* key,
-    TypedValue& dest
-  );
+  void incDecProp(Class* ctx, IncDecOp op, const StringData* key,
+                  TypedValue& dest);
 
   void unsetProp(Class* ctx, const StringData* key);
 
@@ -413,11 +408,10 @@ struct ObjectData {
     return offsetof(ObjectData, m_hdr) +
            offsetof(HeaderWord<uint16_t>, aux);
   }
+  const char* classname_cstr() const;
 
 private:
   friend struct MemoryProfile;
-
-  const char* classname_cstr() const;
 
   static void compileTimeAssertions();
 

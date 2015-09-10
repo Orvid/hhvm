@@ -17,6 +17,7 @@
 #ifndef incl_HPHP_JIT_ABI_X64_H_
 #define incl_HPHP_JIT_ABI_X64_H_
 
+#include "hphp/runtime/vm/jit/abi-regs.h"
 #include "hphp/runtime/vm/jit/phys-reg.h"
 
 #include "hphp/util/asm-x64.h"
@@ -55,6 +56,9 @@ PhysReg rarg_simd(size_t i);
 
 size_t num_arg_regs();
 size_t num_arg_regs_simd();
+
+RegSet arg_regs(size_t n);
+RegSet arg_regs_simd(size_t n);
 
 constexpr PhysReg r_svcreq_req()  { return reg::rdi; }
 constexpr PhysReg r_svcreq_stub() { return reg::r10; }

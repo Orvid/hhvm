@@ -369,8 +369,10 @@ public:
   static bool LookForTypechecker;
   static bool AutoTypecheck;
 
+  // ENABLED (1) selects PHP7 behavior.
   static bool PHP7;
   static bool PHP7_UVS;
+  static bool PHP7_NoHexNumerics;
 
   static int64_t HeapSizeMB;
   static int64_t HeapResetCountBase;
@@ -544,10 +546,12 @@ public:
   F(uint32_t, JitPGOMinBlockCountPercent, 0)                            \
   F(double,   JitPGOMinArcProbability, 0.0)                             \
   F(uint32_t, JitPGOMaxFuncSizeDupBody, 80)                             \
+  F(uint32_t, JitPGORelaxPercent,      100)                             \
   F(bool,     JitLoops,                true)                            \
   F(uint32_t, HotFuncCount,            4100)                            \
   F(bool, HHIRConstrictGuards,         hhirConstrictGuardsDefault())    \
   F(bool, HHIRRelaxGuards,             hhirRelaxGuardsDefault())        \
+  F(bool, RegionRelaxGuards,           true)                            \
   /* DumpBytecode =1 dumps user php, =2 dumps systemlib & user php */   \
   F(int32_t, DumpBytecode,             0)                               \
   F(bool, DumpHhas,                    false)                           \

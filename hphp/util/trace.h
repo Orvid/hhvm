@@ -105,6 +105,7 @@ namespace Trace {
       TM(fr)            \
       TM(gc)            \
       TM(heap)          \
+      TM(heapreport)    \
       TM(hhas)          \
       TM(hhbbc)         \
       TM(hhbbc_dce)     \
@@ -154,7 +155,6 @@ namespace Trace {
       TM(servicereq)    \
       TM(simplify)      \
       TM(mm)            \
-      TM(heaptrace)     \
       TM(stat)          \
       TM(statgroups)    \
       TM(stats)         \

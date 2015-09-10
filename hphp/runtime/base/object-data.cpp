@@ -603,7 +603,7 @@ Array ObjectData::o_toIterArray(const String& context, IterMode mode) {
     const auto* props = m_cls->declProperties();
     auto numDeclProp = m_cls-> numDeclProperties();
     for (size_t i = 0; i < numDeclProp; i++) {
-      const auto* key = props[i].m_name.get();
+      const auto* key = props[i].name.get();
       if (!retArray.get()->exists(key)) {
         accessibleProps = getPropertyIfAccessible(
             this, ctx, key, mode, retArray, accessibleProps);
@@ -1221,7 +1221,7 @@ TypedValue* ObjectData::propImpl(
     // Property exists, but it is either protected or private since accessible
     // is false.
     auto const propInd = m_cls->lookupDeclProp(key);
-    auto const attrs = m_cls->declProperties()[propInd].m_attrs;
+    auto const attrs = m_cls->declProperties()[propInd].attrs;
     auto const priv = (attrs & AttrPrivate) ? "private" : "protected";
 
     raise_error(
@@ -1526,13 +1526,8 @@ TypedValue* ObjectData::setOpProp(TypedValue& tvRef,
   return prop;
 }
 
-template <bool setResult>
-void ObjectData::incDecProp(
-  Class* ctx,
-  IncDecOp op,
-  const StringData* key,
-  TypedValue& dest
-) {
+void ObjectData::incDecProp(Class* ctx, IncDecOp op, const StringData* key,
+                            TypedValue& dest) {
   auto const lookup = getProp(ctx, key);
   auto prop = lookup.prop;
 
@@ -1543,7 +1538,7 @@ void ObjectData::incDecProp(
     if (prop->m_type == KindOfUninit &&
         getAttribute(UseGet) &&
         invokeGet(&tvResult, key)) {
-      IncDecBody<setResult>(op, &tvResult, &dest);
+      IncDecBody(op, &tvResult, &dest);
       TypedValue ignored;
       if (getAttribute(UseSet) && invokeSet(&ignored, key, &tvResult)) {
         tvRefcountedDecRef(&ignored);
@@ -1559,7 +1554,7 @@ void ObjectData::incDecProp(
     } else {
       prop = tvToCell(prop);
     }
-    IncDecBody<setResult>(op, prop, &dest);
+    IncDecBody(op, prop, &dest);
     return;
   }
 
@@ -1569,7 +1564,7 @@ void ObjectData::incDecProp(
   if (getAttribute(HasNativePropHandler)) {
     if (invokeNativeGetProp(&tv, key)) {
       tvUnboxIfNeeded(&tv);
-      IncDecBody<setResult>(op, &tv, &dest);
+      IncDecBody(op, &tv, &dest);
       TypedValue ignored;
       if (invokeNativeSetProp(&ignored, key, &tv)) {
         tvRefcountedDecRef(&ignored);
@@ -1587,7 +1582,7 @@ void ObjectData::incDecProp(
     // in tvResult.
     invokeGet(&tvResult, key);
     tvUnboxIfNeeded(&tvResult);
-    IncDecBody<setResult>(op, &tvResult, &dest);
+    IncDecBody(op, &tvResult, &dest);
     if (prop) raise_error("Cannot access protected property");
     prop = reinterpret_cast<TypedValue*>(
       &reserveProperties().lvalAt(StrNR(key), AccessFlags::Key)
@@ -1604,7 +1599,7 @@ void ObjectData::incDecProp(
   if (useGet && useSet) {
     if (invokeGet(&tv, key)) {
       tvUnboxIfNeeded(&tv);
-      IncDecBody<setResult>(op, &tv, &dest);
+      IncDecBody(op, &tv, &dest);
       TypedValue ignored;
       if (invokeSet(&ignored, key, &tv)) {
         tvRefcountedDecRef(&ignored);
@@ -1622,17 +1617,8 @@ void ObjectData::incDecProp(
     &reserveProperties().lvalAt(StrNR(key), AccessFlags::Key)
   );
   assert(prop->m_type == KindOfNull); // cannot exist yet
-  IncDecBody<setResult>(op, prop, &dest);
+  IncDecBody(op, prop, &dest);
 }
-
-template void ObjectData::incDecProp<true>(Class*,
-                                           IncDecOp,
-                                           const StringData*,
-                                           TypedValue&);
-template void ObjectData::incDecProp<false>(Class*,
-                                            IncDecOp,
-                                            const StringData*,
-                                            TypedValue&);
 
 void ObjectData::unsetProp(Class* ctx, const StringData* key) {
   auto const lookup = getProp(ctx, key);
@@ -1716,7 +1702,7 @@ void ObjectData::getProp(const Class* klass,
       !inserted[propInd]) {
     inserted[propInd] = true;
     props.lvalAt(
-      StrNR(klass->declProperties()[propInd].m_mangledName).asString())
+      StrNR(klass->declProperties()[propInd].mangledName).asString())
       .setWithRef(tvAsCVarRef(propVal));
   }
 }

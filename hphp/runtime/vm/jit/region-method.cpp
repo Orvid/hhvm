@@ -33,7 +33,7 @@ bool isFuncEntry(const Func* func, Offset off) {
 int numInstrs(PC start, PC end) {
   int ret{};
   for (; start != end; ++ret) {
-    start += instrLen((Op*)start);
+    start += instrLen(start);
   }
   return ret;
 }
@@ -118,7 +118,7 @@ RegionDescPtr selectMethod(const RegionContext& context) {
 
     for (InstrRange inst = blockInstrs(b); !inst.empty();) {
       auto const pc   = inst.popFront();
-      auto const info = instrStackTransInfo(reinterpret_cast<const Op*>(pc));
+      auto const info = instrStackTransInfo(pc);
       switch (info.kind) {
       case StackTransInfo::Kind::InsertMid:
         ++sp;
@@ -168,7 +168,7 @@ RegionDescPtr selectMethod(const RegionContext& context) {
       if (lt.location.localId() < context.func->numParams()) {
         // Only predict objectness, not the specific class type.
         auto const type = lt.type < TObj ? TObj : lt.type;
-        ret->entry()->addPreCondition({lt.location, type});
+        ret->entry()->addPreCondition({lt.location, type, DataTypeSpecific});
       }
       break;
     }

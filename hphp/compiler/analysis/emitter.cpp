@@ -332,8 +332,8 @@ static int32_t countStackValues(const std::vector<uchar>& immVec) {
     }                                                                   \
     ITRACE(3, "after: {}\n", m_ev.getEvalStack().pretty());             \
     auto& loc = m_tempLoc ? *m_tempLoc : m_node->getRange();            \
-    auto UNUSED opPtr = reinterpret_cast<const Op*>(m_ue.bc() + curPos);\
-    ITRACE(2, "{}: {}\n", curPos, instrToString(opPtr));                \
+    auto UNUSED pc = m_ue.bc() + curPos;                                \
+    ITRACE(2, "{}: {}\n", curPos, instrToString(pc));                   \
     ITRACE(2, "lines [{},{}] chars [{},{}]\n",                          \
            loc.line0, loc.line1, loc.char0, loc.char1);                 \
     /* Update various other metadata */                                 \
@@ -3704,7 +3704,14 @@ bool EmitterVisitor::visit(ConstructPtr node) {
         auto scalar = dynamic_pointer_cast<ScalarExpression>(second);
         bool notQuoted = scalar && !scalar->isQuoted();
         std::string s = second->getLiteralString();
-        if (s == "static" && notQuoted) {
+
+        const auto isame =
+          [](const std::string& a, const std::string& b) {
+            return (a.size() == b.size()) &&
+                   !strncasecmp(a.c_str(), b.c_str(), a.size());
+          };
+
+        if (notQuoted && isame(s, "static")) {
           // Can't resolve this to a literal name at emission time
           static const StringData* fname
             = makeStaticString("get_called_class");
@@ -3719,14 +3726,14 @@ bool EmitterVisitor::visit(ConstructPtr node) {
         } else if (s != "") {
           ClassScopeRawPtr cls = second->getClassScope();
           bool isTrait = cls && cls->isTrait();
-          bool isSelf = s == "self" && notQuoted;
-          bool isParent = s == "parent" && notQuoted;
+          bool isSelf = notQuoted && isame(s, "self");
+          bool isParent = notQuoted && isame(s, "parent");
 
           if (isTrait && (isSelf || isParent)) {
             emitConvertToCell(e);
-            if (s == "self" && notQuoted) {
+            if (isSelf) {
               e.Self();
-            } else if (s == "parent" && notQuoted) {
+            } else if (isParent) {
               e.Parent();
             }
 

@@ -70,7 +70,7 @@ const RegSet kSF = RegSet(RegSF{0});
  * Registers that can safely be used for scratch purposes in-between traces.
  */
 const RegSet kScratchCrossTraceRegs =
-  kXMMCallerSaved | (kGPUnreserved - vm_regs_with_sp());
+  kXMMCallerSaved | (kGPUnreserved - detail::kVMRegs);
 
 /*
  * Helper code ABI registers.
@@ -169,6 +169,13 @@ size_t num_arg_regs() {
 }
 size_t num_arg_regs_simd() {
   return sizeof(simd_args) / sizeof(PhysReg);
+}
+
+RegSet arg_regs(size_t n) {
+  return jit::arg_regs(n);
+}
+RegSet arg_regs_simd(size_t n) {
+  return jit::arg_regs_simd(n);
 }
 
 PhysReg r_svcreq_sf() {

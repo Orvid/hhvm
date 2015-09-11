@@ -4689,7 +4689,7 @@ void CodeGenerator::cgContStartedCheck(IRInstruction* inst) {
 
   // Take exit if state == 0.
   auto const sf = v.makeReg();
-  v << testbim{int8_t(0xff), contReg[stateOff], sf};
+  v << testbim{int8_t(0xffu), contReg[stateOff], sf};
   v << jcc{CC_Z, sf, {label(inst->next()), label(inst->taken())}};
 }
 

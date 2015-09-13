@@ -22,9 +22,10 @@
 #include "hphp/runtime/base/builtin-functions.h"
 #include "hphp/util/logger.h"
 
+#include <folly/FilePortability.h>
+
 #include <sys/types.h>
 #include <netinet/in.h>
-#include <unistd.h>
 #if defined(__FreeBSD__)
 # include <sys/endian.h>
 #elif defined(__APPLE__)

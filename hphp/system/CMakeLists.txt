@@ -47,8 +47,7 @@ foreach(cls ${SYSTEMLIB_CLASSES})
   endif()
 endforeach()
 
-add_custom_command(
-  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/systemlib.php
+add_custom_command(TARGET hhvm PRE_BUILD
   DEPENDS "php.txt" ${SYSTEMLIB_SRCS}
   COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/../runtime/ext_hhvm/make_systemlib.sh"
           "--install_dir=${CMAKE_CURRENT_BINARY_DIR}"
@@ -57,7 +56,3 @@ add_custom_command(
           "${SYSTEMLIB_SRCS_STR}"
   WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../.."
   COMMENT "Generating systemlib.php")
-
-add_custom_target(
-  systemlib
-  DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/systemlib.php)

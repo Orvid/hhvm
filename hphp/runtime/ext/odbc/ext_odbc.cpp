@@ -15,8 +15,6 @@
    +----------------------------------------------------------------------+
 */
 
-#ifdef HAVE_UODBC
-
 #include "hphp/runtime/ext/extension.h"
 #include "hphp/runtime/vm/jit/translator-inline.h"
 #include <sql.h>
@@ -382,7 +380,7 @@ bool ODBCCursor::exec_prepared_query(const Array params)
 {
   SYNC_VM_REGS_SCOPED();
 
-  SQLCHAR* input[params_size_];
+  SQLCHAR** input = (SQLCHAR**)alloca(sizeof(SQLCHAR*) * params_size_);
   int64_t num_rows;
 
   for (int i=0; i < params_size_; i++) {
@@ -898,5 +896,3 @@ static class ODBCExtension final : public Extension {
 } s_odbc_extension;
 
 }
-
-#endif // HAVE_UODBC

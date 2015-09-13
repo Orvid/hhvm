@@ -52,6 +52,7 @@
 #endif
 
 #include <sys/types.h>
+#include <folly/CPortability.h>
 #ifndef _MSC_VER
 #include <sys/param.h>
 #endif

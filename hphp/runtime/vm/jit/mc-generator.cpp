@@ -56,6 +56,7 @@
 #include "hphp/util/rank.h"
 #include "hphp/util/repo-schema.h"
 #include "hphp/util/ringbuffer.h"
+#include "hphp/util/service-data.h"
 #include "hphp/util/timer.h"
 #include "hphp/util/trace.h"
 
@@ -78,6 +79,7 @@
 #include "hphp/runtime/vm/jit/align.h"
 #include "hphp/runtime/vm/jit/check.h"
 #include "hphp/runtime/vm/jit/code-gen.h"
+#include "hphp/runtime/vm/jit/code-gen-helpers.h"
 #include "hphp/runtime/vm/jit/debug-guards.h"
 #include "hphp/runtime/vm/jit/func-guard.h"
 #include "hphp/runtime/vm/jit/func-prologue.h"
@@ -106,8 +108,6 @@
 #include "hphp/runtime/vm/treadmill.h"
 #include "hphp/runtime/vm/type-profile.h"
 #include "hphp/runtime/vm/unwind.h"
-
-#include "hphp/runtime/vm/jit/mc-generator-internal.h"
 
 namespace HPHP { namespace jit {
 
@@ -1794,8 +1794,7 @@ bool CodeGenFixups::empty() const {
     m_literals.empty();
 }
 
-TCA
-MCGenerator::translateWork(const TranslArgs& args) {
+TCA MCGenerator::translateWork(const TranslArgs& args) {
   Timer _t(Timer::translate);
   auto sk = args.sk;
 
@@ -1930,7 +1929,9 @@ MCGenerator::translateWork(const TranslArgs& args) {
 
     FTRACE(1, "emitting dispatchBB interp request for failed "
       "translation (spOff = {})\n", initSpOffset.offset);
-    backEnd().emitInterpReq(code.main(), sk, initSpOffset);
+    vwrap(code.main(),
+          [&] (Vout& v) { emitInterpReq(v, sk, initSpOffset); },
+          CodeKind::Helper);
     // Fall through.
   }
 
@@ -2031,6 +2032,11 @@ MCGenerator::translateWork(const TranslArgs& args) {
   if (Trace::moduleEnabledRelease(Trace::tcspace, 1)) {
     Trace::traceRelease("%s", getUsageString().c_str());
   }
+
+  // Report jit maturity based on the amount of code emitted.
+  auto percent = code.mainUsed() * 100 / RuntimeOption::EvalJitAMaxUsage;
+  if (percent > 100) percent = 100;
+  ServiceData::createCounter("jit.maturity")->setValue(percent);
 
   return loc.mainStart();
 }

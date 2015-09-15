@@ -3592,18 +3592,26 @@ OPTBLD_INLINE void iopNewPackedArray(IOP_ARGS) {
 OPTBLD_INLINE void iopNewStructArray(IOP_ARGS) {
   auto n = decode<uint32_t>(pc); // number of keys and elements
   assert(n > 0 && n <= StructArray::MaxMakeSize);
-  StringData** names = (StringData**)alloca(sizeof(StringData*) * n);
-  for (size_t i = 0; i < n; i++) {
-    names[i] = decode_litstr(pc);
+
+  req::vector<StringData*> names;
+  names.reserve(n);
+
+  for (size_t i = 0; i < n; ++i) {
+    names.push_back(decode_litstr(pc));
   }
+
   // This constructor moves values, no inc/decref is necessary.
   ArrayData* a;
   Shape* shape;
   if (!RuntimeOption::EvalDisableStructArray &&
-      (shape = Shape::create(names, n))) {
+      (shape = Shape::create(names.data(), n))) {
     a = MixedArray::MakeStructArray(n, vmStack().topC(), shape);
   } else {
-    a = MixedArray::MakeStruct(n, names, vmStack().topC())->asArrayData();
+    a = MixedArray::MakeStruct(
+      n,
+      names.data(),
+      vmStack().topC()
+    )->asArrayData();
   }
   vmStack().ndiscard(n);
   vmStack().pushArrayNoRc(a);
@@ -4668,22 +4676,23 @@ struct SpropState {
   ~SpropState();
   StringData* name;
   TypedValue* clsref;
-  TypedValue* nameCell;
   TypedValue* output;
   TypedValue* val;
+  TypedValue oldNameCell;
   bool visible;
   bool accessible;
 };
 
 SpropState::SpropState(Stack& vmstack) {
   clsref = vmstack.topTV();
-  nameCell = vmstack.indTV(1);
-  output = nameCell;
+  auto nameCell = output = vmstack.indTV(1);
   lookup_sprop(vmfp(), clsref, name, nameCell, val, visible, accessible);
+  oldNameCell = *nameCell;
 }
 
 SpropState::~SpropState() {
   decRefStr(name);
+  tvRefcountedDecRef(oldNameCell);
 }
 
 template<bool box> void getS(PC& pc) {
@@ -5380,7 +5389,7 @@ OPTBLD_INLINE void iopSetOpL(IOP_ARGS) {
   auto op = decode_oa<SetOpOp>(pc);
   Cell* fr = vmStack().topC();
   Cell* to = tvToCell(frame_local(vmfp(), local));
-  setopBodyCell(to, op, fr);
+  setopBody(to, op, fr);
   tvRefcountedDecRef(fr);
   cellDup(*to, *fr);
 }
@@ -5395,7 +5404,7 @@ OPTBLD_INLINE void iopSetOpN(IOP_ARGS) {
   lookupd_var(vmfp(), name, tv2, to);
   SCOPE_EXIT { decRefStr(name); };
   assert(to != nullptr);
-  setopBody(to, op, fr);
+  setopBody(tvToCell(to), op, fr);
   tvRefcountedDecRef(fr);
   tvRefcountedDecRef(tv2);
   cellDup(*tvToCell(to), *tv2);
@@ -5412,7 +5421,7 @@ OPTBLD_INLINE void iopSetOpG(IOP_ARGS) {
   lookupd_gbl(vmfp(), name, tv2, to);
   SCOPE_EXIT { decRefStr(name); };
   assert(to != nullptr);
-  setopBody(to, op, fr);
+  setopBody(tvToCell(to), op, fr);
   tvRefcountedDecRef(fr);
   tvRefcountedDecRef(tv2);
   cellDup(*tvToCell(to), *tv2);
@@ -5435,7 +5444,7 @@ OPTBLD_INLINE void iopSetOpS(IOP_ARGS) {
                 classref->m_data.pcls->name()->data(),
                 name->data());
   }
-  setopBody(val, op, fr);
+  setopBody(tvToCell(val), op, fr);
   tvRefcountedDecRef(propn);
   tvRefcountedDecRef(fr);
   cellDup(*tvToCell(val), *output);
@@ -5505,7 +5514,11 @@ OPTBLD_INLINE void iopIncDecN(IOP_ARGS) {
   TypedValue* nameCell = vmStack().topTV();
   TypedValue* local = nullptr;
   lookupd_var(vmfp(), name, nameCell, local);
-  SCOPE_EXIT { decRefStr(name); };
+  auto oldNameCell = *nameCell;
+  SCOPE_EXIT {
+    decRefStr(name);
+    tvRefcountedDecRef(oldNameCell);
+  };
   assert(local != nullptr);
   IncDecBody(op, tvToCell(local), nameCell);
 }
@@ -5516,7 +5529,11 @@ OPTBLD_INLINE void iopIncDecG(IOP_ARGS) {
   TypedValue* nameCell = vmStack().topTV();
   TypedValue* gbl = nullptr;
   lookupd_gbl(vmfp(), name, nameCell, gbl);
-  SCOPE_EXIT { decRefStr(name); };
+  auto oldNameCell = *nameCell;
+  SCOPE_EXIT {
+    decRefStr(name);
+    tvRefcountedDecRef(oldNameCell);
+  };
   assert(gbl != nullptr);
   IncDecBody(op, tvToCell(gbl), nameCell);
 }
@@ -5529,7 +5546,6 @@ OPTBLD_INLINE void iopIncDecS(IOP_ARGS) {
                 ss.clsref->m_data.pcls->name()->data(),
                 ss.name->data());
   }
-  tvRefcountedDecRef(ss.nameCell);
   IncDecBody(op, tvToCell(ss.val), ss.output);
   vmStack().discard();
 }

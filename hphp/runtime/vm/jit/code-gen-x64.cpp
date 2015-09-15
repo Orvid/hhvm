@@ -50,9 +50,8 @@
 #include "hphp/runtime/vm/jit/cfg.h"
 #include "hphp/runtime/vm/jit/code-gen-cf.h"
 #include "hphp/runtime/vm/jit/code-gen-helpers.h"
-#include "hphp/runtime/vm/jit/code-gen-helpers-x64.h"
+#include "hphp/runtime/vm/jit/code-gen-internal.h"
 #include "hphp/runtime/vm/jit/ir-opcode.h"
-#include "hphp/runtime/vm/jit/mc-generator-internal.h"
 #include "hphp/runtime/vm/jit/mc-generator.h"
 #include "hphp/runtime/vm/jit/native-calls.h"
 #include "hphp/runtime/vm/jit/print.h"
@@ -219,6 +218,31 @@ void maybe_syncsp(Vout& v, BCMarker marker, Vreg irSP, IRSPOffset off) {
 
 RegSet cross_trace_args(BCMarker marker) {
   return marker.resumed() ? cross_trace_regs_resumed() : cross_trace_regs();
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+static void emitCheckSurpriseFlagsEnter(Vout& v, Vout& vcold,
+                                        Vreg fp, Vreg rds,
+                                        Fixup fixup, Vlabel catchBlock) {
+  auto cold = vcold.makeBlock();
+  auto done = v.makeBlock();
+
+  auto const sf = v.makeReg();
+  v << cmpqm{fp, rds[rds::kSurpriseFlagsOff], sf};
+  v << jcc{CC_NBE, sf, {done, cold}};
+
+  v = done;
+  vcold = cold;
+
+  auto const call = CppCall::direct(
+    reinterpret_cast<void(*)()>(mcg->tx().uniqueStubs.functionEnterHelper));
+  auto const args = v.makeVcallArgs({});
+  vcold << vinvoke{call, args, v.makeTuple({}), {done, catchBlock}, fixup};
+}
+
+ptrdiff_t genOffset(bool isAsync) {
+  return isAsync ? AsyncGenerator::objectOff() : Generator::objectOff();
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -1397,8 +1421,8 @@ void CodeGenerator::cgExtendsClass(IRInstruction* inst) {
     // least as long as the potential base (testClass) it might be a
     // subclass.
     auto const sf = v.makeReg();
-    emitCmpVecLen(v, sf, rObjClass[Class::classVecLenOff()],
-                  static_cast<int32_t>(testClass->classVecLen()));
+    emitCmpVecLen(v, sf, static_cast<int32_t>(testClass->classVecLen()),
+                  rObjClass[Class::classVecLenOff()]);
     return cond(v, CC_NB, sf, dst, [&](Vout& v) {
       // If it's a subclass, rTestClass must be at the appropriate index.
       auto const vecOffset = Class::classVecOff() +
@@ -2437,9 +2461,7 @@ void CodeGenerator::decRefImpl(Vout& v, const IRInstruction* inst,
   }
 
   if (!ty.maybe(TStatic)) {
-    auto const sf = v.makeReg();
-    v << declm{base[FAST_REFCOUNT_OFFSET], sf};
-    emitAssertFlagsNonNegative(v, sf);
+    auto const sf = emitDecRef(v, base);
     ifThen(v, vcold(), CC_E, sf, destroy, unlikelyDestroy);
     return;
   }
@@ -2516,9 +2538,7 @@ void CodeGenerator::cgDecRefNZ(IRInstruction* inst) {
     vmain(), ty, srcLoc(inst, 0),
     [&] (Vout& v) {
       auto const base = srcLoc(inst, 0).reg();
-      auto const sf = v.makeReg();
-      v << declm{base[FAST_REFCOUNT_OFFSET], sf};
-      emitAssertFlagsNonNegative(v, sf);
+      emitDecRef(v, base);
     }
   );
 }
@@ -3959,8 +3979,8 @@ void CodeGenerator::cgInstanceOfIfaceVtable(IRInstruction* inst) {
   auto const clsReg = srcLoc(inst, 0).reg();
 
   auto const sf = v.makeReg();
-  emitCmpVecLen(v, sf, clsReg[Class::vtableVecLenOff()],
-                static_cast<int32_t>(slot));
+  emitCmpVecLen(v, sf, static_cast<int32_t>(slot),
+                clsReg[Class::vtableVecLenOff()]);
   cond(
     v, CC_A, sf, dstLoc(inst, 0).reg(),
     [&](Vout& v) {

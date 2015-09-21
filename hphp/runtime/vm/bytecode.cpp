@@ -3849,6 +3849,16 @@ OPTBLD_INLINE void implCellBinOpBool(PC& pc, Op op) {
   vmStack().popC();
 }
 
+template<class Op>
+OPTBLD_INLINE void implCellBinOpInt64(PC& pc, Op op) {
+  auto const c1 = vmStack().topC();
+  auto const c2 = vmStack().indC(1);
+  auto const result = op(*c2, *c1);
+  tvRefcountedDecRef(c2);
+  *c2 = make_tv<KindOfInt64>(result);
+  vmStack().popC();
+}
+
 OPTBLD_INLINE void iopAdd(IOP_ARGS) {
   implCellBinOp(pc, cellAdd);
 }
@@ -3943,6 +3953,12 @@ OPTBLD_INLINE void iopGt(IOP_ARGS) {
 
 OPTBLD_INLINE void iopGte(IOP_ARGS) {
   implCellBinOpBool(pc, cellGreaterOrEqual);
+}
+
+OPTBLD_INLINE void iopCmp(IOP_ARGS) {
+  implCellBinOpInt64(pc, [&] (Cell c1, Cell c2) {
+    return cellCompare(c1, c2);
+  });
 }
 
 OPTBLD_INLINE void iopShl(IOP_ARGS) {
@@ -6597,26 +6613,17 @@ OPTBLD_INLINE void iopWIterInitK(IOP_ARGS) {
   }
 }
 
-
-inline bool initIteratorM(PC& pc, PC& origPc, Iter* it, Offset offset,
-                          Ref* r1, TypedValue *val, TypedValue *key) {
-  bool hasElems = false;
+inline bool initIteratorM(Iter* it, Offset offset, Ref* r1,
+                          TypedValue *val, TypedValue *key) {
   TypedValue* rtv = r1->m_data.pref->tv();
   if (rtv->m_type == KindOfArray) {
-    hasElems = new_miter_array_key(it, r1->m_data.pref, val, key);
-  } else if (rtv->m_type == KindOfObject)  {
+    return new_miter_array_key(it, r1->m_data.pref, val, key);
+  }
+  if (rtv->m_type == KindOfObject)  {
     Class* ctx = arGetContextClass(vmfp());
-    hasElems = new_miter_object(it, r1->m_data.pref, ctx, val, key);
-  } else {
-    hasElems = new_miter_other(it, r1->m_data.pref);
+    return new_miter_object(it, r1->m_data.pref, ctx, val, key);
   }
-
-  if (!hasElems) {
-    pc = origPc + offset;
-  }
-
-  vmStack().popV();
-  return hasElems;
+  return new_miter_other(it, r1->m_data.pref);
 }
 
 OPTBLD_INLINE void iopMIterInit(IOP_ARGS) {
@@ -6628,7 +6635,10 @@ OPTBLD_INLINE void iopMIterInit(IOP_ARGS) {
   assert(r1->m_type == KindOfRef);
   Iter* it = frame_iter(vmfp(), itId);
   TypedValue* tv1 = frame_local(vmfp(), val);
-  initIteratorM(pc, origPc, it, offset, r1, tv1, nullptr);
+  if (!initIteratorM(it, offset, r1, tv1, nullptr)) {
+    pc = origPc + offset; // nothing to iterate; exit foreach loop.
+  }
+  vmStack().popV();
 }
 
 OPTBLD_INLINE void iopMIterInitK(IOP_ARGS) {
@@ -6642,7 +6652,10 @@ OPTBLD_INLINE void iopMIterInitK(IOP_ARGS) {
   Iter* it = frame_iter(vmfp(), itId);
   TypedValue* tv1 = frame_local(vmfp(), val);
   TypedValue* tv2 = frame_local(vmfp(), key);
-  initIteratorM(pc, origPc, it, offset, r1, tv1, tv2);
+  if (!initIteratorM(it, offset, r1, tv1, tv2)) {
+    pc = origPc + offset; // nothing to iterate; exit foreach loop.
+  }
+  vmStack().popV();
 }
 
 OPTBLD_INLINE void iopIterNext(IOP_ARGS) {

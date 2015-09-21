@@ -2,7 +2,7 @@
    +----------------------------------------------------------------------+
    | HipHop for PHP                                                       |
    +----------------------------------------------------------------------+
-   | Copyright (c) 2010-2015 Facebook, Inc. (http://www.facebook.com)     |
+   | Copyright (c) 2010-2013 Facebook, Inc. (http://www.facebook.com)     |
    +----------------------------------------------------------------------+
    | This source file is subject to version 3.01 of the PHP license,      |
    | that is bundled with this package in the file LICENSE, and is        |
@@ -14,53 +14,34 @@
    +----------------------------------------------------------------------+
 */
 
-#include <algorithm>
+#ifndef incl_HPHP_JIT_VASM_LOWER_H_
+#define incl_HPHP_JIT_VASM_LOWER_H_
+
+#include "hphp/runtime/vm/jit/vasm.h"
 
 namespace HPHP { namespace jit {
 
 ///////////////////////////////////////////////////////////////////////////////
-// Vout.
 
-inline Vout& Vout::operator=(const Vout& v) {
-  assertx(&v.m_unit == &m_unit);
-  m_block = v.m_block;
-  m_origin = v.m_origin;
-  return *this;
-}
-
-inline Vout& Vout::operator=(Vlabel b) {
-  m_block = b;
-  return *this;
-}
-
-inline Vout::operator Vlabel() const {
-  return m_block;
-}
-
-inline AreaIndex Vout::area() const {
-  return m_unit.blocks[m_block].area;
-}
-
-inline Vreg Vout::makeReg() {
-  return m_unit.makeReg();
-}
-
-inline Vtuple Vout::makeTuple(const VregList& regs) const {
-  return m_unit.makeTuple(regs);
-}
-
-inline Vtuple Vout::makeTuple(VregList&& regs) const {
-  return m_unit.makeTuple(std::move(regs));
-}
-
-inline VcallArgsId Vout::makeVcallArgs(VcallArgs&& args) const {
-  return m_unit.makeVcallArgs(std::move(args));
-}
-
-template<class T>
-inline Vreg Vout::cns(T v) {
-  return m_unit.makeConst(Vconst{v});
-}
+struct Vunit;
 
 ///////////////////////////////////////////////////////////////////////////////
+
+/*
+ * Architecture-independent lowering pass.
+ */
+void vlower(Vunit& unit);
+
+/*
+ * Lower a single instruction.
+ *
+ * Replaces the instruction at `unit.blocks[b].code[i]` with an appropriate
+ * sequence of zero or more instructions.
+ */
+void vlower(Vunit& unit, Vlabel b, size_t i);
+
+///////////////////////////////////////////////////////////////////////////////
+
 }}
+
+#endif

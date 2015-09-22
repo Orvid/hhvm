@@ -103,7 +103,7 @@ using namespace jit::reg;
 
 ///////////////////////////////////////////////////////////////////////////////
 
-ATTRIBUTE_NORETURN
+[[noreturn]]
 void cgPunt(const char* file, int line, const char* func, uint32_t bcOff,
             const Func* vmFunc, bool resumed,
             TransID profTransId);

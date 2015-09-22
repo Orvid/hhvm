@@ -380,8 +380,12 @@ bool ODBCCursor::exec_prepared_query(const Array params)
 {
   SYNC_VM_REGS_SCOPED();
 
-  SQLCHAR** input = (SQLCHAR**)alloca(sizeof(SQLCHAR*) * params_size_);
+  req::vector<SQLCHAR*> input;
+  input.reserve(params_size_);
   int64_t num_rows;
+  SCOPE_EXIT {
+    for (auto p : input) req::free(p);
+  };
 
   for (int i=0; i < params_size_; i++) {
     const Array &cur_array = params[i].toArray();
@@ -389,7 +393,7 @@ bool ODBCCursor::exec_prepared_query(const Array params)
     num_rows = cur_array.size();
 
     // allocate buffer we'll pass to odbc
-    input[i] = (SQLCHAR*)req::malloc(num_rows * param->col_size);
+    input.push_back((SQLCHAR*)req::malloc(num_rows * param->col_size));
 
     // copy each element of our input array to the buffer
     for (int j=0; j < num_rows; j++) {
@@ -420,10 +424,6 @@ bool ODBCCursor::exec_prepared_query(const Array params)
         SQLExecute(hdl_stmt_))) {
     ODBCContext::extract_error(SQL_HANDLE_STMT, hdl_stmt_);
     return false;
-  }
-
-  for (int i=0; i < params_size_; i++) {
-    req::free(input[i]);
   }
 
   set_num_cols();

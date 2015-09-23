@@ -38,21 +38,10 @@ add_dependencies(hphp_analysis hphp_system)
 
 FILE(STRINGS "php.txt" SYSTEMLIB_CLASSES)
 set(SYSTEMLIB_SRCS)
-set(SYSTEMLIB_SRCS_STR)
 foreach(cls ${SYSTEMLIB_CLASSES})
   STRING(REGEX REPLACE "[ \t]*#.*" "" cls "${cls}")
   if (NOT "${cls}" STREQUAL "")
-    list(APPEND SYSTEMLIB_SRCS "../../${cls}")
-    set(SYSTEMLIB_SRCS_STR "${SYSTEMLIB_SRCS_STR} ${cls}")
+    list(APPEND SYSTEMLIB_SRCS "${cls}")
   endif()
 endforeach()
-
-add_custom_command(TARGET hhvm PRE_BUILD
-  DEPENDS "php.txt" ${SYSTEMLIB_SRCS}
-  COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/../runtime/ext_hhvm/make_systemlib.sh"
-          "--install_dir=${CMAKE_CURRENT_BINARY_DIR}"
-          "--fbcode_dir=${CMAKE_CURRENT_SOURCE_DIR}/.."
-          "${CMAKE_CURRENT_BINARY_DIR}"
-          "${SYSTEMLIB_SRCS_STR}"
-  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../.."
-  COMMENT "Generating systemlib.php")
+set(SYSTEMLIB_SOURCES ${SYSTEMLIB_SRCS} CACHE INTERNAL "" FORCE)

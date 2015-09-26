@@ -40,7 +40,7 @@ inline Arch arch() {
  * We need to specify the return type explicitly, or else we may drop refs.
  */
 #define ARCH_SWITCH_CALL(func, ...)     \
-  ([&]() -> auto {                      \
+  ([&]() -> decltype(auto) {            \
     switch (arch()) {                   \
       case Arch::X64:                   \
         return x64::MSVC_GLUE(func, (__VA_ARGS__));  \

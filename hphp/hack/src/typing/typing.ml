@@ -402,7 +402,8 @@ and check_memoizable env param (pname, ty) =
       check_memoizable env param (pname, ty)
     end
   (* Allow untyped arrays. *)
-  | _, Tarraykind AKany ->
+  | _, Tarraykind AKany
+  | _, Tarraykind AKempty ->
       ()
   | _, Tarraykind (AKvec ty)
   | _, Tarraykind (AKmap(_, ty)) ->
@@ -902,7 +903,7 @@ and lvalue env e =
 and expr_ ~in_cond ~(valkind: [> `lvalue | `rvalue | `other ]) env (p, e) =
   match e with
   | Any -> env, (Reason.Rwitness p, Tany)
-  | Array [] -> env, (Reason.Rwitness p, Tarraykind AKany)
+  | Array [] -> env, (Reason.Rwitness p, Tarraykind AKempty)
   | Array (x :: rl as l) ->
       check_consistent_fields x rl;
       let env, value = TUtils.in_var env (Reason.Rnone, Tunresolved []) in
@@ -1260,6 +1261,11 @@ and expr_ ~in_cond ~(valkind: [> `lvalue | `rvalue | `other ]) env (p, e) =
       let env, ty1 = TUtils.unresolved env ty1 in
       let env, ty2 = TUtils.unresolved env ty2 in
       Unify.unify env ty1 ty2
+  | NullCoalesce (e1, e2) ->
+      (* Desugar `$a ?? $b` into `$a !== null ? $a : $b` *)
+      let c = (p, Binop (Ast.Diff2, e1, (p, Null))) in
+      let eif = (p, Eif (c, Some e1, e2)) in
+      expr env eif
   | Class_const (cid, mid) -> class_const env p (cid, mid)
   | Class_get (x, (_, y))
       when Env.FakeMembers.get_static env x y <> None ->
@@ -1564,8 +1570,8 @@ and new_object ~check_not_abstract p env c el uel =
       env, (Reason.Runknown_class p, Tobject)
   | Some (cname, class_, c_ty) ->
       if check_not_abstract && class_.tc_abstract
-        && not (requires_consistent_construct c)
-      then Errors.uninstantiable_class p class_.tc_pos class_.tc_name;
+        && not (requires_consistent_construct c) then
+        uninstantiable_error p c class_.tc_pos class_.tc_name p c_ty;
       let env, params = lfold begin fun env _ ->
         TUtils.in_var env (Reason.Rnone, Tunresolved [])
       end env class_.tc_tparams in
@@ -1621,19 +1627,27 @@ and new_object ~check_not_abstract p env c el uel =
 and instantiable_cid p env cid =
   let env, class_id = class_id_for_new p env cid in
   (match class_id with
-    | Some ((pos, name), class_, _) when
+    | Some ((pos, name), class_, c_ty) when
            class_.tc_kind = Ast.Ctrait || class_.tc_kind = Ast.Cenum ->
       (match cid with
-        | CI _ | CIexpr _ ->
-          Errors.uninstantiable_class pos class_.tc_pos name;
+        | CIexpr _ | CI _ ->
+          uninstantiable_error p cid class_.tc_pos name pos c_ty;
           env, None
         | CIstatic | CIparent | CIself -> env, class_id
       )
-    | Some ((pos, name), class_, _) when
+    | Some ((pos, name), class_, c_ty) when
            class_.tc_kind = Ast.Cabstract && class_.tc_final ->
-       Errors.uninstantiable_class pos class_.tc_pos name;
-       env, None
+      uninstantiable_error p cid class_.tc_pos name pos c_ty;
+      env, None
     | None | Some _ -> env, class_id)
+
+and uninstantiable_error reason_pos cid c_tc_pos c_name c_usage_pos c_ty =
+  let reason_msgl = match cid with
+    | CIexpr _ ->
+      let ty_str = "This would be "^Typing_print.error (snd c_ty) in
+      [(reason_pos, ty_str)]
+    | _ -> [] in
+  Errors.uninstantiable_class c_usage_pos c_tc_pos c_name reason_msgl
 
 and exception_ty pos env ty =
   let exn_ty = Reason.Rthrow pos, Tclass ((pos, SN.Classes.cException), []) in
@@ -1766,6 +1780,7 @@ and assign p env e1 ty2 =
           end env el in
           env, ty2
       | r, Tarraykind AKany
+      | r, Tarraykind AKempty
       | r, Tany ->
           let env, _ = lfold begin fun env e ->
             assign (fst e) env e (r, Tany)
@@ -1857,7 +1872,7 @@ and assign p env e1 ty2 =
        * When that is the case we want to add the field to its type.
        *)
       let env, shape_ty = expr env shape in
-      let field = TUtils.shape_field_name p1 e in
+      let field = TUtils.shape_field_name env p1 e in
       let env, shape_ty =
         Typing_shapes.grow_shape p e1 field (Env.fresh_type()) env shape_ty in
       let env, _ty = set_valid_rvalue p env lvar shape_ty in
@@ -2032,7 +2047,7 @@ and dispatch_call p env call_type (fpos, fun_expr as e) el uel =
       let rec get_array_filter_return_type env ty =
         let env, ety = Env.expand_type env ty in
         (match ety with
-        | (_, Tarraykind AKany) as array_type ->
+        | (_, Tarraykind (AKany | AKempty)) as array_type ->
             env, array_type
         | (r, Tarraykind (AKvec tv)) ->
             let env, tv = get_value_type env tv in
@@ -2150,7 +2165,7 @@ and dispatch_call p env call_type (fpos, fun_expr as e) el uel =
           let rec build_output_container
             (env:Env.env) (x:locl ty) : (Env.env * (locl ty -> locl ty)) =
             let env, x = Env.expand_type env x in (match x with
-              | (_, Tarraykind AKany) as array_type ->
+              | (_, Tarraykind (AKany | AKempty)) as array_type ->
                 env, (fun _ -> array_type)
               | (r, Tarraykind AKvec _) ->
                 env, (fun tr -> (r, Tarraykind (AKvec(tr))) )
@@ -2504,7 +2519,7 @@ and array_get is_lvalue p env ty1 ety1 e2 ty2 =
         | Tprim _ | Tvar _ | Tfun _ | Tclass (_, _) | Tabstract (_, _)
         | Ttuple _ | Tanon _ | Tobject | Tshape _) -> env, v
       )
-  | Tany | Tarraykind AKany -> env, (Reason.Rnone, Tany)
+  | Tany | Tarraykind (AKany | AKempty)-> env, (Reason.Rnone, Tany)
   | Tprim Tstring ->
       let ty = Reason.Rwitness p, Tprim Tstring in
       let env, ty = Type.unify p Reason.URnone env ty1 ty in
@@ -2550,7 +2565,7 @@ and array_get is_lvalue p env ty1 ety1 e2 ty2 =
       )
   | Tshape (_, fdm) ->
     let p, e2' = e2 in
-    let field = TUtils.shape_field_name p e2' in
+    let field = TUtils.shape_field_name env p e2' in
     (match ShapeMap.get field fdm with
       | None ->
         Errors.undefined_field p (TUtils.get_printable_shape_field_name field);
@@ -2581,7 +2596,7 @@ and array_append is_lvalue p env ty1 =
   let env, ty1 = TUtils.fold_unresolved env ty1 in
   let env, ety1 = Env.expand_type env ty1 in
   match snd ety1 with
-  | Tany | Tarraykind AKany -> env, (Reason.Rnone, Tany)
+  | Tany | Tarraykind (AKany | AKempty) -> env, (Reason.Rnone, Tany)
   | Tclass ((_, n), [ty])
       when n = SN.Collections.cVector || n = SN.Collections.cSet ->
       env, ty
@@ -3627,7 +3642,7 @@ and condition env tparamet =
       let env, ty = expr env e in
       let env, ety = Env.expand_type env ty in
       (match ety with
-      | _, Tarraykind AKany
+      | _, Tarraykind (AKany | AKempty)
       | _, Tprim Tbool -> env
       | _, (Tany | Tmixed | Tarraykind _ | Toption _
         | Tprim _ | Tvar _ | Tfun _ | Tabstract (_, _) | Tclass (_, _)

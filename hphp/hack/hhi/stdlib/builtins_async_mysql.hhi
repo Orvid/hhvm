@@ -119,7 +119,7 @@ class AsyncMysqlErrorResult extends AsyncMysqlResult {
 }
 class AsyncMysqlQueryErrorResult extends AsyncMysqlErrorResult {
   public function numSuccessfulQueries(): int { }
-  public function getSuccessfulResults(): Vector { }
+  public function getSuccessfulResults(): Vector<AsyncMysqlQueryResult> { }
 }
 class AsyncMysqlQueryResult extends AsyncMysqlResult {
   public function __construct() { parent::__construct();}
@@ -201,6 +201,7 @@ class AsyncMysqlException extends Exception {
   public function mysqlErrorCode(): int;
   public function mysqlErrorString(): string;
   public function timedOut(): bool;
+  public function failed(): bool;
   public function getResult(): AsyncMysqlErrorResult;
 }
 class AsyncMysqlConnectException extends AsyncMysqlException {}

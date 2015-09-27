@@ -663,6 +663,8 @@ void IntlExtension::initNumberFormatter() {
 #undef NUMFMT_CONST
 
   Native::registerNativeDataInfo<NumberFormatter>(s_NumberFormatter.get());
+
+  loadSystemlib("icu_num_fmt");
 }
 
 //////////////////////////////////////////////////////////////////////////////

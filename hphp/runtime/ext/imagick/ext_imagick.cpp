@@ -327,6 +327,7 @@ void ImagickExtension::moduleInit() {
   loadImagickDrawClass();
   loadImagickPixelClass();
   loadImagickPixelIteratorClass();
+  loadSystemlib();
 }
 
 void ImagickExtension::threadInit() {

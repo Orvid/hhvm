@@ -151,6 +151,8 @@ void IntlExtension::initUcsDet() {
 
   Native::registerNativeDataInfo<EncodingDetector>(s_EncodingDetector.get());
   Native::registerNativeDataInfo<EncodingMatch>(s_EncodingMatch.get());
+
+  loadSystemlib("icu_ucsdet");
 }
 
 //////////////////////////////////////////////////////////////////////////////

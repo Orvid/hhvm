@@ -8390,10 +8390,8 @@ class ExifExtension final : public Extension {
     HHVM_FE(exif_read_data);
     HHVM_FE(exif_tagname);
     HHVM_FE(exif_thumbnail);
-  }
 
-  virtual const SystemlibSet getSystemlibSources() const override {
-    return SystemlibSet({ "exif" });
+    loadSystemlib();
   }
 } s_exif_extension;
 
@@ -8676,10 +8674,8 @@ class GdExtension final : public Extension {
 #endif
 
     Native::registerConstant<KindOfBoolean>(s_GD_BUNDLED.get(), true);
-  }
 
-  virtual const SystemlibSet getSystemlibSources() const override {
-    return SystemlibSet({ "gd" });
+    loadSystemlib();
   }
 } s_gd_extension;
 

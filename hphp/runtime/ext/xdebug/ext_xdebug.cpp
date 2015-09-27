@@ -917,6 +917,7 @@ void XDebugExtension::moduleInit() {
   HHVM_FE(xdebug_time_index);
   HHVM_FE(xdebug_var_dump);
   HHVM_FE(_xdebug_check_trigger_vars);
+  loadSystemlib("xdebug");
 }
 
 void XDebugExtension::requestInit() {

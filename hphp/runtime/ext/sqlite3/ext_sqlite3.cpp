@@ -843,9 +843,8 @@ public:
     HHVM_ME(SQLite3Result, finalize);
     Native::registerNativeDataInfo<SQLite3Result>(
       SQLite3Result::s_className.get(), Native::NDIFlags::NO_SWEEP);
-  }
-  virtual const SystemlibSet getSystemlibSources() const override {
-    return SystemlibSet({ "sqlite3" });
+
+    loadSystemlib();
   }
 } s_sqlite3_extension;
 

@@ -17,13 +17,6 @@ class CollectionsExtension : public Extension {
     initSet();
   }
 
-  virtual const SystemlibSet getSystemlibSources() const override {
-    return SystemlibSet({
-      "collections-map", "collections-pair",
-      "collections-set", "collections-vector"
-    });
-  }
-
  private:
   void initPair();
   void initVector();

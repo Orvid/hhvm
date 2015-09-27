@@ -64,9 +64,8 @@ public:
     HHVM_FE(xbox_set_thread_timeout);
     HHVM_FE(xbox_schedule_thread_reset);
     HHVM_FE(xbox_get_thread_time);
-  }
-  virtual const SystemlibSet getSystemlibSources() const override {
-    return SystemlibSet({ "server" });
+
+    loadSystemlib();
   }
 } s_server_extension;
 

@@ -302,6 +302,8 @@ void StandardExtension::initOutput() {
   INTCONST(PHP_OUTPUT_HANDLER_REMOVABLE);
   INTCONST(PHP_OUTPUT_HANDLER_STDFLAGS);
 #undef INTCONST
+
+  loadSystemlib("std_output");
 }
 
 }

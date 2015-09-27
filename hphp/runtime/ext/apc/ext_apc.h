@@ -64,10 +64,6 @@ class apcExtension final : public Extension {
   void moduleInit() override;
   void moduleShutdown() override;
   bool moduleEnabled() const override { return Enable; }
-
-  virtual const SystemlibSet getSystemlibSources() const override {
-    return SystemlibSet({ "apc" });
-  }
 };
 
 ///////////////////////////////////////////////////////////////////////////////

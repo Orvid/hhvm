@@ -777,9 +777,8 @@ public:
     HHVM_ME(XMLReader, expand);
 
     Native::registerNativeDataInfo<XMLReader>(s_XMLReader.get());
-  }
-  virtual const SystemlibSet getSystemlibSources() const override {
-    return SystemlibSet({ "xmlreader" });
+
+    loadSystemlib();
   }
 } s_xml_reader_extension;
 

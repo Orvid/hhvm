@@ -266,9 +266,7 @@ class wddxExtension final : public Extension {
     HHVM_FE(wddx_packet_start);
     HHVM_FE(wddx_serialize_value);
     HHVM_FE(wddx_serialize_vars);
-  }
-  virtual const SystemlibSet getSystemlibSources() const override {
-    return SystemlibSet({ "wddx" });
+    loadSystemlib();
   }
 } s_wddx_extension;
 

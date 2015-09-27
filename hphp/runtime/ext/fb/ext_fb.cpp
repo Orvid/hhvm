@@ -1195,10 +1195,8 @@ class FBExtension : public Extension {
     HHVM_FE(fb_get_last_flush_size);
     HHVM_FE(fb_lazy_lstat);
     HHVM_FE(fb_lazy_realpath);
-  }
 
-  virtual const SystemlibSet getSystemlibSources() const override {
-    return SystemlibSet({ "fb" });
+    loadSystemlib();
   }
 } s_fb_extension;
 

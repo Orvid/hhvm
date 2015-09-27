@@ -42,6 +42,8 @@ void CollectionsExtension::initMap() {
     s_MapIterator.get(),
     Native::NDIFlags::NO_SWEEP
   );
+
+  loadSystemlib("collections-map");
 }
 
 /////////////////////////////////////////////////////////////////////////////

@@ -517,6 +517,8 @@ void StandardExtension::initVariable() {
   HHVM_FE(parse_str);
   HHVM_FALIAS(__SystemLib\\extract, SystemLib_extract);
   HHVM_FALIAS(__SystemLib\\parse_str, SystemLib_parse_str);
+
+  loadSystemlib("std_variable");
 }
 
 ///////////////////////////////////////////////////////////////////////////////

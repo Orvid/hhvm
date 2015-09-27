@@ -181,6 +181,8 @@ void IntlExtension::initMisc() {
                                           INTL_IDNA_VARIANT_2003);
   Native::registerConstant<KindOfInt64>(s_INTL_IDNA_VARIANT_UTS46.get(),
                                           INTL_IDNA_VARIANT_UTS46);
+
+  loadSystemlib("icu_misc");
 }
 
 /////////////////////////////////////////////////////////////////////////////

@@ -956,9 +956,8 @@ class XMLWriterExtension final : public Extension {
       HHVM_FE(xmlwriter_output_memory);
 
       Native::registerNativeDataInfo<XMLWriterData>(s_XMLWriterData.get());
-    }
-    virtual const SystemlibSet getSystemlibSources() const override {
-      return SystemlibSet({ "xmlwriter" });
+
+      loadSystemlib();
     }
 } s_xmlwriter_extension;
 

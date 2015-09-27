@@ -198,10 +198,8 @@ public:
     HHVM_FE(stream_socket_recvfrom);
     HHVM_FE(stream_socket_sendto);
     HHVM_FE(stream_socket_shutdown);
-  }
 
-  virtual const SystemlibSet getSystemlibSources() const override {
-    return SystemlibSet({ "stream" });
+    loadSystemlib();
   }
 } s_stream_extension;
 

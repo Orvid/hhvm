@@ -69,6 +69,8 @@ void AsioExtension::initFunctions() {
     asio_get_current_context_idx);
   HHVM_FALIAS(HH\\asio_get_running_in_context, asio_get_running_in_context);
   HHVM_FALIAS(HH\\asio_get_running, asio_get_running);
+
+  loadSystemlib();
 }
 
 ///////////////////////////////////////////////////////////////////////////////

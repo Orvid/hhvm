@@ -4445,10 +4445,8 @@ static class mbstringExtension final : public Extension {
     HHVM_FE(mb_substitute_character);
     HHVM_FE(mb_substr_count);
     HHVM_FE(mb_substr);
-  }
 
-  virtual const SystemlibSet getSystemlibSources() const override {
-    return SystemlibSet({ "mbstring" });
+    loadSystemlib();
   }
 
   static std::string http_input;

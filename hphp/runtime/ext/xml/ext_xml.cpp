@@ -62,9 +62,8 @@ public:
     HHVM_FE(xml_error_string);
     HHVM_FE(utf8_decode);
     HHVM_FE(utf8_encode);
-  }
-  virtual const SystemlibSet getSystemlibSources() const override {
-    return SystemlibSet({ "xml" });
+
+    loadSystemlib();
   }
 } s_xml_extension;
 

@@ -947,10 +947,7 @@ public:
     HHVM_FALIAS(HH\\objprof_get_paths, objprof_get_paths);
     HHVM_FALIAS(HH\\thread_memory_stats, thread_memory_stats);
     HHVM_FALIAS(HH\\thread_mark_stack, thread_mark_stack);
-  }
-
-  virtual const SystemlibSet getSystemlibSources() const override {
-    return SystemlibSet({ "objprof" });
+    loadSystemlib();
   }
 } s_objprof_extension;
 

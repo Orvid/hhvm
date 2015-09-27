@@ -330,10 +330,7 @@ class xenonExtension final : public Extension {
 
   void moduleInit() override {
     HHVM_FALIAS(HH\\xenon_get_data, xenon_get_data);
-  }
-
-  virtual const SystemlibSet getSystemlibSources() const override {
-    return SystemlibSet({ "xenon" });
+    loadSystemlib();
   }
 } s_xenon_extension;
 

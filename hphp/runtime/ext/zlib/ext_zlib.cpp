@@ -709,17 +709,14 @@ class ZlibExtension final : public Extension {
 
     Native::registerNativeDataInfo<__SystemLib_ChunkedInflator>(
       s___SystemLib_ChunkedInflator.get());
-  }
-  virtual const SystemlibSet getSystemlibSources() const override {
-    return SystemlibSet({
-      "zlib",
+
+    loadSystemlib();
 #ifdef HAVE_QUICKLZ
-      "zlib-qlz",
+    loadSystemlib("zlib-qlz");
 #endif
 #ifdef HAVE_SNAPPY
-      "zlib-snappy",
+    loadSystemlib("zlib-snappy");
 #endif
-    });
   }
 } s_zlib_extension;
 ///////////////////////////////////////////////////////////////////////////////

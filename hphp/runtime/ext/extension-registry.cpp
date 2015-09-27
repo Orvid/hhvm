@@ -293,17 +293,6 @@ void scanExtensions(IMarker& mark) {
   }
 }
 
-
-std::vector<std::pair<std::string, std::set<std::string>>>
-getAllExtensionSystemlibSources() {
-  std::vector<std::pair<std::string, std::set<std::string>>> ret;
-  for (auto& ext : s_ordered) {
-    ret.push_back(std::make_pair(
-      ext->getDSOName(), ext->getSystemlibSources()));
-  }
-  return ret;
-}
-
 /////////////////////////////////////////////////////////////////////////////
 
 static

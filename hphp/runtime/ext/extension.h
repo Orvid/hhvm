@@ -59,6 +59,12 @@ class Extension : public IDebuggable {
 public:
   static bool IsSystemlibPath(const std::string& path);
 
+  // Look for "ext.{namehash}" in the binary and compile/merge it
+  void loadSystemlib(const std::string& name = "");
+
+  // Compile and merge an systemlib fragment
+  static void CompileSystemlib(const std::string &slib,
+                               const std::string &name);
 public:
   explicit Extension(const char* name, const char* version = "");
   virtual ~Extension() {}
@@ -87,18 +93,8 @@ public:
     return DependencySet();
   }
 
-  typedef std::set<std::string> SystemlibSet;
-  virtual const SystemlibSet getSystemlibSources() const {
-    // No systemlib sources by default
-    return SystemlibSet();
-  }
-
   void setDSOName(const std::string &name) {
     m_dsoName = name;
-  }
-
-  const std::string& getDSOName() const {
-    return m_dsoName;
   }
 
   const std::string& getName() const {
@@ -106,13 +102,6 @@ public:
   }
 
 private:
-  // Look for "ext.{namehash}" in the binary and compile/merge it
-  void loadSystemlib(const std::string& name = "");
-
-  // Compile and merge an systemlib fragment
-  static void CompileSystemlib(const std::string &slib,
-                               const std::string &name);
-
   std::string m_name;
   std::string m_version;
   std::string m_dsoName;

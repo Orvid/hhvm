@@ -215,10 +215,8 @@ class bz2Extension final : public Extension {
     HHVM_FE(bzerrno);
     HHVM_FE(bzcompress);
     HHVM_FE(bzdecompress);
-  }
 
-  virtual const SystemlibSet getSystemlibSources() const override {
-    return SystemlibSet({ "bz2" });
+    loadSystemlib("bz2");
   }
 } s_bz2_extension;
 

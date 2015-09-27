@@ -1556,9 +1556,8 @@ class zipExtension final : public Extension {
       delete wrapper;
       raise_warning("Couldn't register Zip wrapper");
     }
-  }
-  virtual const SystemlibSet getSystemlibSources() const override {
-    return SystemlibSet({ "zip" });
+
+    loadSystemlib();
   }
 } s_zip_extension;
 

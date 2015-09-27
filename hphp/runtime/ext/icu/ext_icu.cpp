@@ -351,6 +351,8 @@ void IntlExtension::initICU() {
 #undef UREGEX_CONST
   Native::registerConstant<KindOfInt64>(s_UREGEX_OFFSET_CAPTURE.get(),
                                         k_UREGEX_OFFSET_CAPTURE);
+
+  loadSystemlib("icu");
 }
 
 ///////////////////////////////////////////////////////////////////////////////

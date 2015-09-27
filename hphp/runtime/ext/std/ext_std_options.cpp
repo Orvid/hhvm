@@ -1246,6 +1246,8 @@ void StandardExtension::initOptions() {
   ASSERTCONST(WARNING);
   ASSERTCONST(QUIET_EVAL);
 #undef ASSERTCONST
+
+  loadSystemlib("std_options");
 }
 
 ///////////////////////////////////////////////////////////////////////////////

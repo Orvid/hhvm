@@ -1700,10 +1700,8 @@ class SocketsExtension final : public Extension {
     HHVM_FE(socket_last_error);
     HHVM_FE(socket_clear_error);
     HHVM_FE(getaddrinfo);
-  }
 
-  virtual const SystemlibSet getSystemlibSources() const override {
-    return SystemlibSet({ "sockets" });
+    loadSystemlib();
   }
 } s_sockets_extension;
 

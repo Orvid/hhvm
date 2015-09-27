@@ -3107,9 +3107,8 @@ public:
     HHVM_FE(use_soap_error_handler);
     HHVM_FE(is_soap_fault);
     HHVM_FE(_soap_active_version);
-  }
-  virtual const SystemlibSet getSystemlibSources() const override {
-    return SystemlibSet({ "soap" });
+
+    loadSystemlib();
   }
 } s_soap_extension;
 

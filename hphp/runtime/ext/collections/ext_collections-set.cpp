@@ -42,6 +42,8 @@ void CollectionsExtension::initSet() {
     s_SetIterator.get(),
     Native::NDIFlags::NO_SWEEP
   );
+
+  loadSystemlib("collections-set");
 }
 
 /////////////////////////////////////////////////////////////////////////////

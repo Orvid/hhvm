@@ -85,13 +85,11 @@ void ZendExtension::moduleInit() {
     TSRMLS_FETCH();
     module->module_startup_func(1, module->module_number TSRMLS_CC);
   }
-}
-
-const ZendExtension::SystemlibSet ZendExtension::getSystemlibSources() const {
   // The systemlib name must match the name used by the build process. For
   // in-tree builds this is the directory name, which is typically the same
   // as the extension name converted to lower case.
-  return SystemlibSet({ toLower(std::string(getName())) });
+  std::string slName = toLower(std::string(getName()));
+  loadSystemlib(slName);
 }
 
 }

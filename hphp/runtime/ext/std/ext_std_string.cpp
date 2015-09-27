@@ -185,6 +185,8 @@ void StandardExtension::initString() {
   HHVM_FE(vsprintf);
   HHVM_FE(printf);
   HHVM_FE(vprintf);
+
+  loadSystemlib("std_string");
 }
 
 }

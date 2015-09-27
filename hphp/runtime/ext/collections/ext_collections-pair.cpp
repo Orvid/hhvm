@@ -42,6 +42,8 @@ void CollectionsExtension::initPair() {
     s_PairIterator.get(),
     Native::NDIFlags::NO_SWEEP
   );
+
+  loadSystemlib("collections-pair");
 }
 
 /////////////////////////////////////////////////////////////////////////////

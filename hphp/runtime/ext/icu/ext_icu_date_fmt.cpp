@@ -495,6 +495,8 @@ void IntlExtension::initDateFormatter() {
   HHVM_ME(IntlDateFormatter, setTimeZone);
 
   Native::registerNativeDataInfo<IntlDateFormatter>(s_IntlDateFormatter.get());
+
+  loadSystemlib("icu_date_fmt");
 }
 
 //////////////////////////////////////////////////////////////////////////////

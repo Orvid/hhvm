@@ -127,9 +127,7 @@ static class HHExtension final : public Extension {
     HHVM_NAMED_FE(HH\\serialize_memoize_param,
                   HHVM_FN(serialize_memoize_param));
     HHVM_NAMED_FE(HH\\set_frame_metadata, HHVM_FN(set_frame_metadata));
-  }
-  virtual const SystemlibSet getSystemlibSources() const override {
-    return SystemlibSet({ "hh" });
+    loadSystemlib();
   }
 } s_hh_extension;
 

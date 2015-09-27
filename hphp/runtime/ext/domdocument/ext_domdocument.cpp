@@ -5971,10 +5971,8 @@ public:
     Native::registerNativePropHandler<DOMXPathPropHandler>(s_DOMXPath);
 
     HHVM_FE(dom_import_simplexml);
-  }
 
-  virtual const SystemlibSet getSystemlibSources() const override {
-    return SystemlibSet({ "domdocument" });
+    loadSystemlib();
   }
 } s_domdocument_extension;
 

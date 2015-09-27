@@ -456,6 +456,8 @@ void StandardExtension::initNetwork() {
   // These are defined in ext_socket, but Zend has them in network
   HHVM_FE(fsockopen);
   HHVM_FE(pfsockopen);
+
+  loadSystemlib("std_network");
 }
 
 ///////////////////////////////////////////////////////////////////////////////

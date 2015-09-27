@@ -43,10 +43,6 @@ class ImagickExtension final : public Extension {
   static bool hasLocaleFix();
   static bool hasProgressMonitor();
 
-  virtual const SystemlibSet getSystemlibSources() const override {
-    return SystemlibSet({ "imagick" });
-  }
-
  private:
   struct ImagickIniSetting {
     bool m_locale_fix;
@@ -103,12 +99,12 @@ IMAGICK_DEFINE_CLASS(ImagickPixelIterator)
 #undef IMAGICK_DEFINE_CLASS
 
 template<typename T>
-__declspec(noreturn)
+[[noreturn]]
 void imagickThrow(ATTRIBUTE_PRINTF_STRING const char* fmt, ...)
   ATTRIBUTE_PRINTF(1, 2);
 
 template<typename T>
-__declspec(noreturn)
+[[noreturn]]
 void imagickThrow(const char* fmt, ...) {
   va_list ap;
   std::string msg;

@@ -3398,10 +3398,8 @@ public:
       s_PDO.get(), Native::NDIFlags::NO_SWEEP);
     Native::registerNativeDataInfo<PDOStatementData>(
       s_PDOStatement.get(), Native::NDIFlags::NO_SWEEP);
-  }
 
-  virtual const SystemlibSet getSystemlibSources() const override {
-    return SystemlibSet({ "pdo" });
+    loadSystemlib("pdo");
   }
 } s_pdo_extension;
 

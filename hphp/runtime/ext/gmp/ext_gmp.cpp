@@ -1491,10 +1491,8 @@ public:
     HHVM_ME(GMP, serialize);
     HHVM_ME(GMP, unserialize);
     HHVM_ME(GMP, __debugInfo);
-  }
 
-  virtual const SystemlibSet getSystemlibSources() const override {
-    return SystemlibSet({ "gmp" });
+    loadSystemlib();
   }
 } s_gmp_extension;
 

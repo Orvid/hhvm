@@ -72,6 +72,8 @@ void IntlExtension::initIterator() {
   HHVM_ME(IntlIterator, valid);
 
   Native::registerNativeDataInfo<IntlIterator>(s_IntlIterator.get());
+
+  loadSystemlib("icu_iterator");
 }
 
 //////////////////////////////////////////////////////////////////////////////

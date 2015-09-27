@@ -26,6 +26,8 @@
 #include "hphp/runtime/ext/libxml/ext_libxml.h"
 #include "hphp/util/string-vsnprintf.h"
 
+#define LIBXSLT_STATIC 1
+#define LIBEXSLT_STATIC 1
 #include <libxslt/xslt.h>
 #include <libxslt/xsltInternals.h>
 #include <libxslt/extensions.h>
@@ -764,8 +766,10 @@ class XSLExtension final : public Extension {
 
       Native::
         registerNativeDataInfo<XSLTProcessorData>(s_XSLTProcessorData.get());
+    }
 
-      loadSystemlib();
+    virtual const SystemlibSet getSystemlibSources() const override {
+      return SystemlibSet({ "xsl" });
     }
 } s_xsl_extension;
 

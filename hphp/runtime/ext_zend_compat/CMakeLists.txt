@@ -75,14 +75,10 @@ if (ENABLE_ZEND_COMPAT)
 endif()
 set(EZC_SYSTEMLIB_SOURCES ${PHP_SOURCES} CACHE INTERNAL "" FORCE)
 
-add_library(hphp_ext_zend_compat STATIC ${CXX_SOURCES} ${C_SOURCES}
+add_library(hphp_ext_zend_compat OBJECT ${CXX_SOURCES} ${C_SOURCES}
             ${ASM_SOURCES} ${HEADER_SOURCES})
 auto_source_group("hphp_ext_zend_compat" "${CMAKE_CURRENT_SOURCE_DIR}"
   ${CXX_SOURCES} ${C_SOURCES} ${ASM_SOURCES} ${HEADER_SOURCES})
-if (ZEND_COMPAT_LINK_LIBRARIES)
-  target_link_libraries(hphp_ext_zend_compat ${ZEND_COMPAT_LINK_LIBRARIES})
-endif()
-hphp_link(hphp_ext_zend_compat)
 
 HHVM_PUBLIC_HEADERS(ext_zend_compat ${HEADER_SOURCES})
 

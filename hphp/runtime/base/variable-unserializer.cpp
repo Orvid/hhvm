@@ -50,54 +50,54 @@ static void unserializeSet(ObjectData*, VariableUnserializer*, int64_t sz,
 static void unserializePair(ObjectData*, VariableUnserializer*, int64_t sz,
                             char type);
 
-[[noreturn]] NEVER_INLINE
+NEVER_INLINE ATTRIBUTE_NORETURN
 static void throwUnexpectedSep(char expect, char actual) {
   throw Exception("Expected '%c' but got '%c'", expect, actual);
 }
 
-[[noreturn]] NEVER_INLINE
+NEVER_INLINE ATTRIBUTE_NORETURN
 static void throwOutOfRange(int64_t id) {
   throw Exception("Id %" PRId64 " out of range", id);
 }
 
-[[noreturn]] NEVER_INLINE
+NEVER_INLINE ATTRIBUTE_NORETURN
 static void throwUnexpectedStr(const char* expect, folly::StringPiece& actual) {
   throw Exception("Expected '%s' but got '%.*s'", expect,
                   (int)actual.size(), actual.data());
 }
 
-[[noreturn]] NEVER_INLINE
+NEVER_INLINE ATTRIBUTE_NORETURN
 static void throwUnknownType(char type) {
   throw Exception("Unknown type '%c'", type);
 }
 
-[[noreturn]] NEVER_INLINE
+NEVER_INLINE ATTRIBUTE_NORETURN
 static void throwInvalidPair() {
   throw Exception("Pair objects must have exactly 2 elements");
 }
 
-[[noreturn]] NEVER_INLINE
+NEVER_INLINE ATTRIBUTE_NORETURN
 static void throwInvalidOFormat(const String& clsName) {
   throw Exception("%s does not support the 'O' serialization format",
                   clsName.data());
 }
 
-[[noreturn]] NEVER_INLINE
+NEVER_INLINE ATTRIBUTE_NORETURN
 static void throwMangledPrivateProperty() {
   throw Exception("Mangled private object property");
 }
 
-[[noreturn]] NEVER_INLINE
+NEVER_INLINE ATTRIBUTE_NORETURN
 static void throwUnterminatedProperty() {
   throw Exception("Object property not terminated properly");
 }
 
-[[noreturn]] NEVER_INLINE
+NEVER_INLINE ATTRIBUTE_NORETURN
 static void throwNotCollection(const String& clsName) {
   throw Exception("%s is not a collection class", clsName.data());
 }
 
-[[noreturn]] NEVER_INLINE
+NEVER_INLINE ATTRIBUTE_NORETURN
 static void throwUnexpectedType(const String& key, const ObjectData* obj,
                                 const Variant& type) {
   auto msg = folly::format(
@@ -110,38 +110,38 @@ static void throwUnexpectedType(const String& key, const ObjectData* obj,
   throw Exception(msg);
 }
 
-[[noreturn]] NEVER_INLINE
+NEVER_INLINE ATTRIBUTE_NORETURN
 static void throwArraySizeOutOfBounds() {
   throw Exception("Array size out of bounds");
 }
 
-[[noreturn]] NEVER_INLINE
+NEVER_INLINE ATTRIBUTE_NORETURN
 static void throwInvalidKey() {
   throw Exception("Invalid key");
 }
 
-[[noreturn]] NEVER_INLINE
+NEVER_INLINE ATTRIBUTE_NORETURN
 static void throwUnterminatedElement() {
   throw Exception("Array element not terminated properly");
 }
 
-[[noreturn]] NEVER_INLINE
+NEVER_INLINE ATTRIBUTE_NORETURN
 static void throwLargeStringSize(int64_t size) {
   throw Exception("Size of serialized string (%ld) exceeds max", size);
 }
 
-[[noreturn]] NEVER_INLINE
+NEVER_INLINE ATTRIBUTE_NORETURN
 static void throwNegativeStringSize(int64_t size) {
   throw Exception("Size of serialized string (%ld) must not be negative", size);
 }
 
-[[noreturn]] NEVER_INLINE
+NEVER_INLINE ATTRIBUTE_NORETURN
 static void throwBadFormat(const ObjectData* obj, char type) {
   throw Exception("%s does not support the '%c' serialization format",
                   header_names[(int)obj->headerKind()], type);
 }
 
-[[noreturn]] NEVER_INLINE
+NEVER_INLINE ATTRIBUTE_NORETURN
 static void throwInvalidHashKey(const ObjectData* obj) {
   throw Exception("%s values must be integers or strings",
                   header_names[(int)obj->headerKind()]);

@@ -34,13 +34,13 @@ namespace {
       "ConditionWaitHandle not notified by its child");
   }
 
-  [[noreturn]] NEVER_INLINE
+  NEVER_INLINE ATTRIBUTE_NORETURN
   void throwNotNotifiedException() {
     SystemLib::throwInvalidArgumentExceptionObject(
       "ConditionWaitHandle not notified by its child");
   }
 
-  [[noreturn]] NEVER_INLINE
+  NEVER_INLINE ATTRIBUTE_NORETURN
   void failAlreadyFinished() {
     SystemLib::throwInvalidArgumentExceptionObject(
       "Unable to notify ConditionWaitHandle that has already finished");

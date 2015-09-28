@@ -70,7 +70,7 @@ static void serializeArray(const ArrayData*, VariableSerializer*,
 static void serializeResource(const ResourceData*, VariableSerializer*);
 static void serializeString(const String&, VariableSerializer*);
 
-[[noreturn]] NEVER_INLINE
+NEVER_INLINE ATTRIBUTE_NORETURN
 static void throwNestingException() {
   throw ExtendedException("Nesting level too deep - recursive dependency?");
 }

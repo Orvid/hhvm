@@ -34,7 +34,7 @@ namespace HPHP {
 
 namespace {
 
-[[noreturn]] NEVER_INLINE
+NEVER_INLINE ATTRIBUTE_NORETURN
 void throw_bad_array_operand() {
   throw ExtendedException("Invalid operand type was used: "
                           "cannot perform this operation with arrays");

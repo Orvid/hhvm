@@ -52,25 +52,25 @@ void delete_AwaitAllWaitHandle(ObjectData* od, const Class*) {
 namespace {
   StaticString s_awaitAll("<await-all>");
 
-  [[noreturn]] NEVER_INLINE
+  NEVER_INLINE ATTRIBUTE_NORETURN
   void failArray() {
     SystemLib::throwInvalidArgumentExceptionObject(
       "Expected dependencies to be an array");
   }
 
-  [[noreturn]] NEVER_INLINE
+  NEVER_INLINE ATTRIBUTE_NORETURN
   void failMap() {
     SystemLib::throwInvalidArgumentExceptionObject(
       "Expected dependencies to be a Map");
   }
 
-  [[noreturn]] NEVER_INLINE
+  NEVER_INLINE ATTRIBUTE_NORETURN
   void failVector() {
     SystemLib::throwInvalidArgumentExceptionObject(
       "Expected dependencies to be a Vector");
   }
 
-  [[noreturn]] NEVER_INLINE
+  NEVER_INLINE ATTRIBUTE_NORETURN
   void failWaitHandle() {
     SystemLib::throwInvalidArgumentExceptionObject(
       "Expected dependencies to be a collection of WaitHandle instances");

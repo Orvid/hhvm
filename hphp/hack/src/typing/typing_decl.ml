@@ -726,7 +726,7 @@ and visibility cid = function
   | Private   -> Vprivate cid
 
 (* each concrete type constant T = <sometype> implicitly defines a
-class constant with the same name which is TypeStrucure<sometype> *)
+class constant with the same name which is TypeStructure<sometype> *)
 and typeconst_ty_decl pos c_name tc_name ~is_abstract =
   let r = Reason.Rwitness pos in
   let tsid = pos, SN.FB.cTypeStructure in
@@ -920,4 +920,6 @@ let name_and_declare_types_program nenv all_classes prog =
 let make_env nenv all_classes fn =
   match Parser_heap.ParserHeap.get fn with
   | None -> ()
-  | Some prog -> name_and_declare_types_program nenv all_classes prog
+  | Some prog ->
+      Typing_decl_deps.add prog;
+      name_and_declare_types_program nenv all_classes prog

@@ -743,13 +743,10 @@ void emitBaseLCR(MTS& env) {
     );
   } else {
     assertx(baseL.space == Location::Stack);
-    // Make sure the stack is clean before getting a pointer to one of its
-    // elements.
-    spillStack(env);
-    env.irb.exceptionStackBoundary();
     auto const stkType = env.irb.stackType(
       offsetFromIRSP(env, baseL.bcRelOffset),
-      DataTypeGeneric);
+      DataTypeGeneric
+    );
     setBase(
       env,
       ldStkAddr(env, baseL.bcRelOffset),
@@ -1630,10 +1627,10 @@ void emitArraySet(MTS& env, SSATmp* key, SSATmp* value) {
     // newArr has already been incref'd in the helper.
     gen(env, StLoc, LocalId(baseLoc.offset), fp(env), newArr);
   } else if (baseLoc.space == Location::Stack) {
-    extendStack(env, BCSPOffset{baseStkIdx});
-    env.irb.evalStack().replace(baseStkIdx, newArr);
+    auto const offset = offsetFromIRSP(env, BCSPOffset{baseStkIdx});
+    gen(env, StStk, IRSPOffsetData{offset}, sp(env), newArr);
   } else {
-    not_reached();
+    always_assert(false);
   }
 
   env.result = value;
@@ -2130,7 +2127,6 @@ Block* makeMISCatch(MTS& env) {
   BlockPusher bp(env.irb, makeMarker(env, bcOff(env)), exit);
   gen(env, BeginCatch);
   cleanTvRefs(env);
-  spillStack(env);
   gen(env, EndCatch, IRSPOffsetData { offsetFromIRSP(env, BCSPOffset{0}) },
     fp(env), sp(env));
   return exit;
@@ -2144,7 +2140,6 @@ Block* makeCatchSet(MTS& env) {
 
   BlockPusher bp(env.irb, makeMarker(env, bcOff(env)), env.failedSetBlock);
   gen(env, BeginCatch);
-  spillStack(env);
 
   ifThen(
     env,
@@ -2186,6 +2181,7 @@ void emitMPost(MTS& env) {
 
   auto const stackCnt = decRefStackInputs(env, DecRefStyle::FromMain);
   discard(env, stackCnt);
+  cleanTvRefs(env);
 
   // Push result, if one was produced. If we had a predicted result
   // (strTestResult case), it was already guarded on above.
@@ -2196,8 +2192,6 @@ void emitMPost(MTS& env) {
             env.op == Op::SetWithRefLM ||
             env.op == Op::SetWithRefRM);
   }
-
-  cleanTvRefs(env);
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -2514,8 +2508,8 @@ void dimImpl(IRGS& env, PropElemOp propElem, MOpFlags flags, SSATmp* key) {
  */
 void mFinalImpl(IRGS& env, int32_t nDiscard, SSATmp* result) {
   for (auto i = 0; i < nDiscard; ++i) popDecRef(env);
-  if (result) push(env, result);
   cleanTvRefs(env);
+  if (result) push(env, result);
 
   gen(env, FinishMemberOp);
 }
@@ -2644,8 +2638,6 @@ void emitBaseL(IRGS& env, int32_t locId, MOpFlags flags) {
 
 void emitBaseC(IRGS& env, int32_t idx) {
   initTvRefs(env);
-  spillStack(env);
-  env.irb->exceptionStackBoundary();
 
   auto const bcOff = BCSPOffset{idx};
   auto const irOff = offsetFromIRSP(env, bcOff);

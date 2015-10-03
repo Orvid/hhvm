@@ -11,6 +11,5 @@
 (* will parse, name, typecheck, the next set of files
  * and refresh the environment and update the many shared heaps
  *)
-val init:
-  ServerEnv.genv -> ServerEnv.env -> Relative_path.t MultiWorker.nextlist ->
-  ServerEnv.env
+val init: ?wait_for_deps:(unit -> float * float) ->
+  ServerEnv.genv -> ServerEnv.env -> ServerEnv.env

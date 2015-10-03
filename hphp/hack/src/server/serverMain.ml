@@ -95,29 +95,7 @@ end = struct
     env
 end
 
-module type SERVER_PROGRAM = sig
-  val preinit : unit -> unit
-  val init : genv -> env -> env
-  val run_once_and_exit : genv -> env -> unit
-  val should_recheck : Relative_path.t -> bool
-  (* filter and relativize updated file paths *)
-  val process_updates : genv -> env -> SSet.t -> Relative_path.Set.t
-  val recheck: genv -> env -> Relative_path.Set.t -> env * int
-  val post_recheck_hook: genv -> env -> env -> Relative_path.Set.t -> unit
-  val parse_options: unit -> ServerArgs.options
-  val get_watch_paths: ServerArgs.options -> Path.t list
-  val name: string
-  val config_filename : unit -> Relative_path.t
-  val load_config : unit -> ServerConfig.t
-  val validate_config : genv -> bool
-  val handle_client : genv -> env -> (in_channel * out_channel) -> unit
-  (* This is a hack for us to save / restore the global state that is not
-   * already captured by ServerEnv *)
-  val marshal : out_channel -> unit
-  val unmarshal : in_channel -> unit
-end
-
-module Program : SERVER_PROGRAM =
+module Program =
   struct
     let name = "hh_server"
 
@@ -147,12 +125,6 @@ module Program : SERVER_PROGRAM =
         ignore @@
         Sys.signal Sys.sigusr1 (Sys.Signal_handle Typing.debug_print_last_pos)
 
-    let make_next_files dir =
-      Find.make_next_files begin fun f ->
-        (FindUtils.is_php f && not (FilesToIgnore.should_ignore f))
-        || FindUtils.is_js f
-      end dir
-
     let stamp_file = Filename.concat GlobalConfig.tmp_dir "stamp"
     let touch_stamp () =
       Sys_utils.mkdir_no_fail (Filename.dirname stamp_file);
@@ -176,20 +148,8 @@ module Program : SERVER_PROGRAM =
       if length_greater_than 5 l1 || length_greater_than 5 l2 || l1 <> l2
       then touch_stamp ()
 
-    let init genv env =
-      let module RP = Relative_path in
-      let root = ServerArgs.root genv.options in
-      let hhi_root = Hhi.get_hhi_root () in
-      let next_files_hhi =
-        compose (List.map ~f:(RP.create RP.Hhi)) (make_next_files hhi_root) in
-      let next_files_root =
-        compose (List.map ~f:(RP.create RP.Root)) (make_next_files root)
-      in
-      let next_files = fun () ->
-        match next_files_hhi () with
-        | [] -> next_files_root ()
-        | x -> x in
-      let env = ServerInit.init genv env next_files in
+    let init ?wait_for_deps genv env =
+      let env = ServerInit.init ?wait_for_deps genv env in
       touch_stamp ();
       env
 
@@ -204,6 +164,7 @@ module Program : SERVER_PROGRAM =
          ServerConvert.go genv env dirname;
          exit 0
 
+    (* filter and relativize updated file paths *)
     let process_updates genv _env updates =
       let root = Path.to_string @@ ServerArgs.root genv.options in
       (* Because of symlinks, we can have updates from files that aren't in
@@ -230,8 +191,8 @@ module Program : SERVER_PROGRAM =
 
     let parse_options = ServerArgs.parse_options
 
-    let get_watch_paths _options = []
-
+    (* This is a hack for us to save / restore the global state that is not
+     * already captured by ServerEnv *)
     let marshal chan =
       Typing_deps.marshal chan;
       HackSearchService.SS.MasterApi.marshal chan
@@ -311,20 +272,11 @@ let recheck genv old_env updates =
  * is no longer getting populated. *)
 let rec recheck_loop acc genv env =
   let t = Unix.gettimeofday () in
-  let raw_updates =
-    match genv.dfind with
-    | None -> SSet.empty
-    | Some dfind ->
-        (try
-          with_timeout 120
-            ~on_timeout:(fun _ -> Exit_status.(exit Dfind_unresponsive))
-            ~do_:(fun () -> DfindLib.get_changes dfind)
-        with _ -> Exit_status.(exit Dfind_died))
-  in
+  let raw_updates = genv.notifier () in
   if SSet.is_empty raw_updates then
     acc, env
   else begin
-    HackEventLogger.dfind_returned t (SSet.cardinal raw_updates);
+    HackEventLogger.notifier_returned t (SSet.cardinal raw_updates);
     let updates = Program.process_updates genv env raw_updates in
     let env, rechecked, total_rechecked = recheck genv env updates in
     let acc = {
@@ -395,7 +347,8 @@ let load genv filename to_recheck =
   let t = Hh_logger.log_duration "Loading saved state" t in
 
   let to_recheck =
-    List.rev_append (BuildMain.get_all_targets ()) to_recheck in
+    if Sys_utils.is_test_mode () then to_recheck
+    else List.rev_append (BuildMain.get_all_targets ()) to_recheck in
   let paths_to_recheck =
     List.map to_recheck (Relative_path.concat Relative_path.Root) in
   let updates =
@@ -446,41 +399,86 @@ let run_load_script genv env cmd =
       "Load state found at %s. %d files to recheck\n%!"
       state_fn (List.length to_recheck);
     HackEventLogger.load_script_done t;
-    let env = load genv state_fn to_recheck in
-    HackEventLogger.init_done "load";
-    env
-  with
-  | State_not_found ->
-     Hh_logger.log "Load state not found!";
-     Hh_logger.log "Starting from a fresh state instead...";
-     let env = Program.init genv env in
-     HackEventLogger.init_done "load_state_not_found";
-     env
-  | Load_state_disabled ->
-     Hh_logger.log "Load state disabled!";
-     let env = Program.init genv env in
-     HackEventLogger.init_done "load_state_disabled";
-     env
-  | e ->
-     let msg = Printexc.to_string e in
-     Hh_logger.log "Load error: %s" msg;
-     Printexc.print_backtrace stderr;
-     Hh_logger.log "Starting from a fresh state instead...";
-     HackEventLogger.load_failed msg;
-     let env = Program.init genv env in
-     HackEventLogger.init_done "load_error";
-     env
+    let init_type = "load" in
+    let env = HackEventLogger.with_init_type init_type begin fun () ->
+      load genv state_fn to_recheck
+    end in
+    env, init_type
+  with e -> begin
+    let init_type = match e with
+      | State_not_found ->
+        Hh_logger.log "Load state not found!";
+        Hh_logger.log "Starting from a fresh state instead...";
+        "load_state_not_found"
+      | Load_state_disabled ->
+        Hh_logger.log "Load state disabled!";
+        "load_state_disabled"
+      | e ->
+        let msg = Printexc.to_string e in
+        Hh_logger.log "Load error: %s" msg;
+        Printexc.print_backtrace stderr;
+        Hh_logger.log "Starting from a fresh state instead...";
+        HackEventLogger.load_failed msg;
+        "load_error"
+    in
+    let env = HackEventLogger.with_init_type init_type begin fun () ->
+      Program.init genv env
+    end in
+    env, init_type
+  end
 
-let create_program_init genv env = fun () ->
-  match ServerConfig.load_script genv.config with
-  | None ->
-     let env = Program.init genv env in
-     HackEventLogger.init_done "fresh";
-     env
-  | Some load_script ->
-      run_load_script genv env load_script
+let load_deps root cmd (_ic, oc) =
+  let start_time = Unix.gettimeofday () in
+  begin try
+    let cmd =
+      sprintf
+        "%s %s %s"
+        (Filename.quote (Path.to_string cmd))
+        (Filename.quote (Path.to_string root))
+        (Filename.quote Build_id.build_id_ohai) in
+    Hh_logger.log "Running load_mini script: %s\n%!" cmd;
+    let filename = Sys_utils.exec_read cmd in
+    SharedMem.load_dep_table (filename^".deptable");
+  with e ->
+    Hh_logger.exc e;
+    (* This is fine; we will just have to compute the dependencies ourselves *)
+    ()
+  end;
+  let end_time = Unix.gettimeofday () in
+  Daemon.to_channel oc (start_time, end_time)
 
-let save _genv env fn =
+let program_init genv env =
+  let env, init_type =
+    match genv.local_config.ServerLocalConfig.load_mini_script with
+    | None -> begin
+      match ServerConfig.load_script genv.config with
+      | None ->
+          let env = Program.init genv env in
+          env, "fresh"
+      | Some load_script ->
+          run_load_script genv env load_script
+    end
+    | Some cmd ->
+        (* Spawn this first so that it can run in the background while
+         * parsing is going on *)
+        let {Daemon.channels = (ic, _oc); pid} =
+          let root = ServerArgs.root genv.options in
+          Daemon.fork (load_deps root cmd) in
+        let wait_for_deps () =
+          let result = Daemon.from_channel ic in
+          let _, status = Unix.waitpid [] pid in
+          assert (status = Unix.WEXITED 0);
+          result
+        in
+        let env = Program.init ~wait_for_deps genv env in
+        env, "mini_load"
+  in
+  Hh_logger.log "Waiting for daemon(s) to be ready...";
+  genv.wait_until_ready ();
+  HackEventLogger.init_really_end init_type;
+  env
+
+let save_complete env fn =
   let chan = open_out_no_fail fn in
   Marshal.to_channel chan env [];
   Program.marshal chan;
@@ -489,7 +487,17 @@ let save _genv env fn =
    * does not expose the underlying file descriptor to C code; so we use
    * a separate ".sharedmem" file. *)
   SharedMem.save (fn^".sharedmem");
-  HackEventLogger.init_done "save"
+  HackEventLogger.init_end "save"
+
+let save_dep_table fn =
+  let t = Unix.gettimeofday () in
+  SharedMem.save_dep_table (fn^".deptable");
+  ignore @@ Hh_logger.log_duration "Saving" t
+
+let save _genv env (kind, fn) =
+  match kind with
+  | ServerArgs.Complete -> save_complete env fn
+  | ServerArgs.Mini -> save_dep_table fn
 
 (* The main entry point of the daemon
  * the only trick to understand here, is that env.modified is the set
@@ -504,6 +512,7 @@ let daemon_main options =
   Gc.set {gc_control with Gc.max_overhead = 200};
   Relative_path.set_path_prefix Relative_path.Root (ServerArgs.root options);
   let config = Program.load_config () in
+  let local_config = ServerLocalConfig.load () in
   let root = ServerArgs.root options in
   if Sys_utils.is_test_mode ()
   then EventLogger.init (Daemon.devnull ()) 0.0
@@ -521,13 +530,11 @@ let daemon_main options =
   if not Sys.win32 then Sys.set_signal Sys.sigpipe Sys.Signal_ignore;
   PidLog.init (ServerFiles.pids_file root);
   PidLog.log ~reason:"main" (Unix.getpid());
-  let watch_paths = root :: Program.get_watch_paths options in
-  let genv = ServerEnvBuild.make_genv options config watch_paths in
+  let genv = ServerEnvBuild.make_genv options config local_config in
   let env = ServerEnvBuild.make_env options config in
-  let program_init = create_program_init genv env in
   let is_check_mode = ServerArgs.check_mode genv.options in
   if is_check_mode then
-    let env = program_init () in
+    let env = program_init genv env in
     Option.iter (ServerArgs.save_filename genv.options) (save genv env);
     Program.run_once_and_exit genv env
   else
@@ -544,7 +551,7 @@ let daemon_main options =
      * socket and get blocked on it -- otherwise, trying to open a socket with
      * no server on the other end is an immediate error. *)
     let socket = Socket.init_unix_socket (ServerFiles.socket_file root) in
-    let env = MainInit.go options program_init in
+    let env = MainInit.go options (fun () -> program_init genv env) in
     serve genv env socket
 
 let main_entry =

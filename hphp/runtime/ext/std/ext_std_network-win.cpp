@@ -41,38 +41,14 @@ namespace HPHP {
 
 bool HHVM_FUNCTION(checkdnsrr, const String& host,
                                const String& type /* = null_string */) {
-  IOStatusHelper io("dns_check_record", host.data());
-  const char *stype;
-  if (type.empty()) {
-    stype = "MX";
-  } else {
-    stype = type.data();
-  }
-  if (host.empty()) {
-    throw_invalid_argument("host: [empty]");
-  }
-
   int ntype;
-  if (!strcasecmp("A", stype)) ntype = DNS_T_A;
-  else if (!strcasecmp("NS",    stype)) ntype = DNS_T_NS;
-  else if (!strcasecmp("MX",    stype)) ntype = DNS_T_MX;
-  else if (!strcasecmp("PTR",   stype)) ntype = DNS_T_PTR;
-  else if (!strcasecmp("ANY",   stype)) ntype = DNS_T_ANY;
-  else if (!strcasecmp("SOA",   stype)) ntype = DNS_T_SOA;
-  else if (!strcasecmp("TXT",   stype)) ntype = DNS_T_TXT;
-  else if (!strcasecmp("CNAME", stype)) ntype = DNS_T_CNAME;
-  else if (!strcasecmp("AAAA",  stype)) ntype = DNS_T_AAAA;
-  else if (!strcasecmp("SRV",   stype)) ntype = DNS_T_SRV;
-  else if (!strcasecmp("NAPTR", stype)) ntype = DNS_T_NAPTR;
-  else if (!strcasecmp("A6",    stype)) ntype = DNS_T_A6;
-  else {
-    throw_invalid_argument("type: %s", stype);
+  if (!validate_dns_arguments(host, type, ntype)) {
     return false;
   }
-
   DNS_STATUS      status;           /* Return value of DnsQuery_A() function */
   PDNS_RECORD     pResult;          /* Pointer to DNS_RECORD structure */
-  status = DnsQuery_A(host.c_str(), ntype, DNS_QUERY_STANDARD, nullptr, &pResult, nullptr);
+  status = DnsQuery_A(host.c_str(), ntype, DNS_QUERY_STANDARD, nullptr,
+                      &pResult, nullptr);
 
   if (status) {
     return false;
@@ -124,7 +100,8 @@ const StaticString
   s_NAPTR("NAPTR"),
   s_IN("IN");
 
-static void php_parserr(PDNS_RECORD pRec, int type_to_fetch, int store, Array* subarray)
+static void php_parserr(PDNS_RECORD pRec, int type_to_fetch, int store,
+                        Array* subarray)
 {
   int type;
   u_long ttl;
@@ -177,7 +154,8 @@ static void php_parserr(PDNS_RECORD pRec, int type_to_fetch, int store, Array* s
     subarray->set(s_target, pRec->Data.MX.pNameExchange);
     break;
 
-    /* Not available on windows, the query is possible but there is no DNS_HINFO_DATA structure */
+    /* Not available on windows, the query is possible but
+     * there is no DNS_HINFO_DATA structure */
   case DNS_TYPE_HINFO:
   case DNS_TYPE_TEXT:
   {
@@ -304,7 +282,7 @@ Variant HHVM_FUNCTION(dns_get_record, const String& hostname, int type /*= -1*/,
     raise_warning("Type '%d' not supported", type);
     return false;
   }
-  
+
   Array ret;
   int type2;
   Array authns;
@@ -319,13 +297,15 @@ Variant HHVM_FUNCTION(dns_get_record, const String& hostname, int type /*= -1*/,
   bool first_query = true;
   bool store_results = true;
   for (;
-  type2 < (!addtlRef.isNull() ? (PHP_DNS_NUM_TYPES + 2) : PHP_DNS_NUM_TYPES) || first_query;
+  type2 < (!addtlRef.isNull()
+        ? (PHP_DNS_NUM_TYPES + 2)
+        : PHP_DNS_NUM_TYPES) || first_query;
     type2++
     ) {
     first_query = false;
     int type_to_fetch;
-    DNS_STATUS      status;                 /* Return value of DnsQuery_A() function */
-    PDNS_RECORD     pResult, pRec;          /* Pointer to DNS_RECORD structure */
+    DNS_STATUS      status; /* Return value of DnsQuery_A() function */
+    PDNS_RECORD     pResult, pRec; /* Pointer to DNS_RECORD structure */
 
     switch (type2) {
     case -1: /* raw */
@@ -379,10 +359,12 @@ Variant HHVM_FUNCTION(dns_get_record, const String& hostname, int type /*= -1*/,
     }
 
     if (type_to_fetch) {
-      status = DnsQuery_A(hostname.c_str(), type_to_fetch, DNS_QUERY_STANDARD, nullptr, &pResult, nullptr);
+      status = DnsQuery_A(hostname.c_str(), type_to_fetch,
+                          DNS_QUERY_STANDARD, nullptr, &pResult, nullptr);
 
       if (status) {
-        if (status == DNS_INFO_NO_RECORDS || status == DNS_ERROR_RCODE_NAME_ERROR) {
+        if (status == DNS_INFO_NO_RECORDS ||
+            status == DNS_ERROR_RCODE_NAME_ERROR) {
           continue;
         }
         else {
@@ -417,7 +399,8 @@ Variant HHVM_FUNCTION(dns_get_record, const String& hostname, int type /*= -1*/,
 # define DnsSectionAdditional 3
 # endif
 #endif
-        if (!addtlRef.isNull() && pRec->Flags.S.Section == DnsSectionAdditional) {
+        if (!addtlRef.isNull() &&
+            pRec->Flags.S.Section == DnsSectionAdditional) {
           php_parserr(pRec, type_to_fetch, 1, &retval);
           if (!retval.empty()) {
             addtl.append(retval);
@@ -444,10 +427,11 @@ bool HHVM_FUNCTION(getmxrr, const String& hostname,
     weightsRef.assignIfRef(weights);
   };
 
-  DNS_STATUS      status;                 /* Return value of DnsQuery_A() function */
-  PDNS_RECORD     pResult, pRec;          /* Pointer to DNS_RECORD structure */
+  DNS_STATUS      status;         /* Return value of DnsQuery_A() function */
+  PDNS_RECORD     pResult, pRec;  /* Pointer to DNS_RECORD structure */
 
-  status = DnsQuery_A(hostname.c_str(), DNS_TYPE_MX, DNS_QUERY_STANDARD, nullptr, &pResult, nullptr);
+  status = DnsQuery_A(hostname.c_str(), DNS_TYPE_MX, DNS_QUERY_STANDARD,
+                      nullptr, &pResult, nullptr);
 
   if (status) {
     return false;

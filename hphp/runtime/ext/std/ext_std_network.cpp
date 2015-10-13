@@ -424,6 +424,39 @@ bool HHVM_FUNCTION(syslog, int priority, const String& message) {
   return true;
 }
 
+bool validate_dns_arguments(const String& host, const String& type,
+                            int& ntype) {
+  IOStatusHelper io("dns_check_record", host.data());
+  const char *stype;
+  if (type.empty()) {
+    stype = "MX";
+  } else {
+    stype = type.data();
+  }
+  if (host.empty()) {
+    throw_invalid_argument("host: [empty]");
+  }
+
+  if (!strcasecmp("A", stype)) ntype = DNS_T_A;
+  else if (!strcasecmp("NS",    stype)) ntype = DNS_T_NS;
+  else if (!strcasecmp("MX",    stype)) ntype = DNS_T_MX;
+  else if (!strcasecmp("PTR",   stype)) ntype = DNS_T_PTR;
+  else if (!strcasecmp("ANY",   stype)) ntype = DNS_T_ANY;
+  else if (!strcasecmp("SOA",   stype)) ntype = DNS_T_SOA;
+  else if (!strcasecmp("TXT",   stype)) ntype = DNS_T_TXT;
+  else if (!strcasecmp("CNAME", stype)) ntype = DNS_T_CNAME;
+  else if (!strcasecmp("AAAA",  stype)) ntype = DNS_T_AAAA;
+  else if (!strcasecmp("SRV",   stype)) ntype = DNS_T_SRV;
+  else if (!strcasecmp("NAPTR", stype)) ntype = DNS_T_NAPTR;
+  else if (!strcasecmp("A6",    stype)) ntype = DNS_T_A6;
+  else {
+    throw_invalid_argument("type: %s", stype);
+    return false;
+  }
+
+  return true;
+}
+
 void StandardExtension::initNetwork() {
   HHVM_FE(gethostname);
   HHVM_FE(gethostbyaddr);

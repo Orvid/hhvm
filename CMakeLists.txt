@@ -57,6 +57,7 @@ INCLUDE(HHVMExtensionConfig)
 
 SET(HPHP_HOME ${CMAKE_CURRENT_SOURCE_DIR})
 SET(TP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third-party")
+SET(TP_BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}/third-party")
 
 # Before we do anything else, we'll configure the extensions,
 # so that the defines take effect globally.

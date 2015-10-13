@@ -101,32 +101,8 @@ static void php_dns_free_res(struct __res_state *res) {
 
 bool HHVM_FUNCTION(checkdnsrr, const String& host,
                                const String& type /* = null_string */) {
-  IOStatusHelper io("dns_check_record", host.data());
-  const char *stype;
-  if (type.empty()) {
-    stype = "MX";
-  } else {
-    stype = type.data();
-  }
-  if (host.empty()) {
-    throw_invalid_argument("host: [empty]");
-  }
-
   int ntype;
-  if (!strcasecmp("A", stype)) ntype = DNS_T_A;
-  else if (!strcasecmp("NS",    stype)) ntype = DNS_T_NS;
-  else if (!strcasecmp("MX",    stype)) ntype = DNS_T_MX;
-  else if (!strcasecmp("PTR",   stype)) ntype = DNS_T_PTR;
-  else if (!strcasecmp("ANY",   stype)) ntype = DNS_T_ANY;
-  else if (!strcasecmp("SOA",   stype)) ntype = DNS_T_SOA;
-  else if (!strcasecmp("TXT",   stype)) ntype = DNS_T_TXT;
-  else if (!strcasecmp("CNAME", stype)) ntype = DNS_T_CNAME;
-  else if (!strcasecmp("AAAA",  stype)) ntype = DNS_T_AAAA;
-  else if (!strcasecmp("SRV",   stype)) ntype = DNS_T_SRV;
-  else if (!strcasecmp("NAPTR", stype)) ntype = DNS_T_NAPTR;
-  else if (!strcasecmp("A6",    stype)) ntype = DNS_T_A6;
-  else {
-    throw_invalid_argument("type: %s", stype);
+  if (!validate_dns_arguments(host, type, ntype)) {
     return false;
   }
 
@@ -142,6 +118,11 @@ bool HHVM_FUNCTION(checkdnsrr, const String& host,
   php_dns_free_res(res);
   return (i >= 0);
 }
+
+typedef union {
+  HEADER qb1;
+  u_char qb2[65536];
+} querybuf;
 
 const StaticString
   s_host("host"),
@@ -185,11 +166,6 @@ const StaticString
   s_SRV("SRV"),
   s_NAPTR("NAPTR"),
   s_IN("IN");
-
-typedef union {
-  HEADER qb1;
-  u_char qb2[65536];
-} querybuf;
 
 #define CHECKCP(n) do { \
   if ((cp + (n)) > end) { \
@@ -514,8 +490,6 @@ Variant HHVM_FUNCTION(dns_get_record, const String& hostname, int type /*= -1*/,
     raise_warning("Type '%d' not supported", type);
     return false;
   }
-  
-  Array ret;
 
   unsigned char *cp = NULL, *end = NULL;
   int qd, an, ns = 0, ar = 0;
@@ -530,6 +504,7 @@ Variant HHVM_FUNCTION(dns_get_record, const String& hostname, int type /*= -1*/,
    * - In case of PHP_DNS_ANY we use the directly fetch DNS_T_ANY.
    *   (step NUMTYPES+1 )
    */
+  Array ret;
   bool first_query = true;
   bool store_results = true;
   for (int t = (type == PHP_DNS_ANY ? (PHP_DNS_NUM_TYPES + 1) : 0);
@@ -636,17 +611,18 @@ bool HHVM_FUNCTION(getmxrr, const String& hostname,
                             VRefParam mxhostsRef,
                             VRefParam weightsRef /* = null */) {
   IOStatusHelper io("dns_get_mx", hostname.data());
+  int count, qdc;
+  unsigned short type, weight;
+  unsigned char ans[MAXPACKET];
+  char buf[255 + 1];  // IETF STD 13 section 3.1; 255 bytes
+  unsigned char *cp, *end;
+
   Array mxhosts;
   Array weights;
   SCOPE_EXIT {
     mxhostsRef.assignIfRef(mxhosts);
     weightsRef.assignIfRef(weights);
   };
-  int count, qdc;
-  unsigned short type, weight;
-  unsigned char ans[MAXPACKET];
-  char buf[255 + 1];  // IETF STD 13 section 3.1; 255 bytes
-  unsigned char *cp, *end;
 
   /* Go! */
   struct __res_state *res;

@@ -2631,6 +2631,11 @@ and array_get is_lvalue p env ty1 ety1 e2 ty2 =
       if Env.is_strict env
       then error_array env p ety1
       else env, (Reason.Rnone, Tany)
+  | Tabstract (AKnewtype (ts, [ty]), Some (r, Tshape (fk, fields)))
+        when ts = SN.FB.cTypeStructure ->
+      let env, fields = TS.transform_shapemap env ty fields in
+      let ty = r, Tshape (fk, fields) in
+      array_get is_lvalue p env ty ty e2 ty2
   | Tabstract (_, Some ty) ->
       let env, ety = Env.expand_type env ty in
       Errors.try_
@@ -4224,7 +4229,7 @@ and update_array_type p env e valkind type_mapper =
     | `lvalue | `lvalue_subexpr ->
       let env, ty1 =
         raw_expr ~valkind:`lvalue_subexpr ~in_cond:false env e in
-      let env, ty1 = type_mapper#on_type env ty1 in
+      let env, ty1 = type_mapper env ty1 in
       begin match e with
         | (_, Lvar (_, x)) ->
           (* update_array_type_ has updated the type in ty1 typevars, but we

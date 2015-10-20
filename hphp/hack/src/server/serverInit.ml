@@ -18,6 +18,7 @@ open Result.Monad_infix
 
 module DepSet = Typing_deps.DepSet
 module Dep = Typing_deps.Dep
+module SLC = ServerLocalConfig
 
 exception No_loader
 exception Loader_timeout
@@ -107,7 +108,7 @@ let mk_state_future timeout root cmd =
   let start_time = Unix.gettimeofday () in
   Result.try_with @@ fun () ->
   let {Daemon.channels = (ic, _oc); pid} =
-    Daemon.fork (load_state root cmd) in
+    Daemon.fork ~log_file:(ServerFiles.load_log root) (load_state root cmd) in
   fun () ->
     Result.join @@ Result.try_with @@ fun () ->
     Sys_utils.with_timeout timeout
@@ -115,6 +116,7 @@ let mk_state_future timeout root cmd =
       ~do_:begin fun () ->
         Daemon.from_channel ic
         >>| fun (fn, dirty_files, end_time) ->
+        HackEventLogger.load_mini_worker_end start_time end_time;
         let time_taken = end_time -. start_time in
         Hh_logger.log "Mini-state loading worker took %.2fs" time_taken;
         let _, status = Unix.waitpid [] pid in
@@ -176,8 +178,9 @@ let naming env t =
   env, (Hh_logger.log_duration "Naming" t)
 
 let type_decl genv env fast t =
+  let bucket_size = genv.local_config.SLC.type_decl_bucket_size in
   let errorl, failed_decl =
-    Typing_decl_service.go genv.workers env.nenv fast in
+    Typing_decl_service.go ~bucket_size genv.workers env.nenv fast in
   let hs = SharedMem.heap_size () in
   Hh_logger.log "Heap size: %d" hs;
   Stats.(stats.init_heap_size <- hs);
@@ -289,7 +292,7 @@ let init ?load_mini_script genv =
    * in the Result monad provides a convenient way to locate the error
    * handling code in one place. *)
   let load_mini_script = Result.of_option load_mini_script ~error:No_loader in
-  let timeout = genv.local_config.ServerLocalConfig.load_mini_script_timeout in
+  let timeout = genv.local_config.SLC.load_mini_script_timeout in
   let state_future = load_mini_script >>= (mk_state_future timeout root) in
 
   let get_next, t = indexing genv in

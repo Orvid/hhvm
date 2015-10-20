@@ -55,10 +55,10 @@ template<typename T>
 inline void
 emitTLSLoad(Vout& v, TLSDatum<ThreadLocalNoCheck<T>> datum, Vreg d) {
   // We don't know for sure what's live.
-  PhysRegSaver(v, abi().gpUnreserved - abi().calleeSaved, true /* aligned */);
+  PhysRegSaver(v, abi().gpUnreserved - abi().calleeSaved);
 
   v << vcall{
-    CppCall::direct(pthread_getspecific),
+    CallSpec::direct(pthread_getspecific),
     v.makeVcallArgs({{v.cns(datum.tls->m_key)}}),
     v.makeTuple({d}),
     Fixup{},

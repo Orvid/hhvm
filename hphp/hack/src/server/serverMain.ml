@@ -97,20 +97,6 @@ end
 
 module Program =
   struct
-    let name = "hh_server"
-
-    let load_config () = ServerConfig.(load filename)
-
-    let validate_config genv =
-      let new_config = load_config () in
-      (* This comparison can eventually be made more complex; we may not always
-       * need to restart hh_server, e.g. changing the path to the load script
-       * is immaterial*)
-      genv.config = new_config
-
-    let handle_client (genv:ServerEnv.genv) (env:ServerEnv.env) client =
-      ServerCommand.handle genv env client
-
     let preinit () =
       HackSearchService.attach_hooks ();
       (* Force hhi files to be extracted and their location saved before workers
@@ -119,34 +105,6 @@ module Program =
       if not Sys.win32 then
         ignore @@
         Sys.signal Sys.sigusr1 (Sys.Signal_handle Typing.debug_print_last_pos)
-
-    let stamp_file = Filename.concat GlobalConfig.tmp_dir "stamp"
-    let touch_stamp () =
-      Sys_utils.mkdir_no_fail (Filename.dirname stamp_file);
-      Sys_utils.with_umask
-        0o111
-        (fun () ->
-         (* Open and close the file to set its mtime. Don't use the Unix.utimes
-          * function since that will fail if the stamp file doesn't exist. *)
-         close_out (open_out stamp_file)
-        )
-    let touch_stamp_errors l1 l2 =
-      (* We don't want to needlessly touch the stamp file if the error list is
-       * the same and nothing has changed, but we also don't want to spend a ton
-       * of time comparing huge lists of errors over and over (i.e., grind to a
-       * halt in the cases when there are thousands of errors). So we cut off
-       * the comparison at an arbitrary point. *)
-      let rec length_greater_than n = function
-        | [] -> false
-        | _ when n = 0 -> true
-        | _::l -> length_greater_than (n-1) l in
-      if length_greater_than 5 l1 || length_greater_than 5 l2 || l1 <> l2
-      then touch_stamp ()
-
-    let init ?load_mini_script genv =
-      let env = ServerInit.init ?load_mini_script genv in
-      touch_stamp ();
-      env
 
     let run_once_and_exit genv env =
       ServerError.print_errorl
@@ -164,8 +122,7 @@ module Program =
       let root = Path.to_string @@ ServerArgs.root genv.options in
       (* Because of symlinks, we can have updates from files that aren't in
        * the .hhconfig directory *)
-      let updates = SSet.filter (fun p ->
-        str_starts_with p root && ServerEnv.file_filter p) updates in
+      let updates = SSet.filter (fun p -> str_starts_with p root) updates in
       Relative_path.(relativize_set Root updates)
 
     let recheck genv old_env typecheck_updates =
@@ -176,13 +133,9 @@ module Program =
           Relative_path.Set.union typecheck_updates old_env.failed_parsing in
         let check_env = { old_env with failed_parsing = failed_parsing } in
         let new_env, total_rechecked = ServerTypeCheck.check genv check_env in
-        touch_stamp_errors old_env.errorl new_env.errorl;
+        ServerStamp.touch_stamp_errors old_env.errorl new_env.errorl;
         new_env, total_rechecked
       end
-
-    let post_recheck_hook = BuildMain.incremental_update
-
-    let parse_options = ServerArgs.parse_options
 
     (* This is a hack for us to save / restore the global state that is not
      * already captured by ServerEnv *)
@@ -214,11 +167,11 @@ let handle_connection_ genv env socket =
       (msg_to_channel oc Build_id_mismatch;
        HackEventLogger.out_of_date ();
        Printf.eprintf "Status: Error\n";
-       Printf.eprintf "%s is out of date. Exiting.\n" Program.name;
+       Printf.eprintf "%s is out of date. Exiting.\n" GlobalConfig.program_name;
        Exit_status.exit Exit_status.Build_id_mismatch)
     else
       msg_to_channel oc Connection_ok;
-    Program.handle_client genv env (ic, oc)
+    ServerCommand.handle genv env (ic, oc)
   with
   | Sys_error("Broken pipe") ->
     shutdown_client (ic, oc)
@@ -244,18 +197,23 @@ let handle_connection genv env socket =
 
 let recheck genv old_env updates =
   let to_recheck =
-    Relative_path.Set.filter
-      (fun update -> FindUtils.is_php (Relative_path.suffix update)) updates in
-  let config = ServerConfig.filename in
-  let config_in_updates = Relative_path.Set.mem config updates in
-  if config_in_updates && not (Program.validate_config genv) then
-    (Hh_logger.log
-      "%s changed in an incompatible way; please restart %s.\n"
-      (Relative_path.suffix config)
-      Program.name;
-     exit 4);
+    Relative_path.Set.filter begin fun update ->
+      ServerEnv.file_filter (Relative_path.suffix update)
+    end updates in
+  let config_in_updates =
+    Relative_path.Set.mem ServerConfig.filename updates in
+  if config_in_updates then begin
+    let new_config = ServerConfig.(load filename) in
+    if not (ServerConfig.is_compatible genv.config new_config) then begin
+      Hh_logger.log
+        "%s changed in an incompatible way; please restart %s.\n"
+        (Relative_path.suffix ServerConfig.filename)
+        GlobalConfig.program_name;
+       exit 4
+    end;
+  end;
   let env, total_rechecked = Program.recheck genv old_env to_recheck in
-  Program.post_recheck_hook genv old_env env updates;
+  BuildMain.incremental_update genv old_env env updates;
   env, to_recheck, total_rechecked
 
 (* When a rebase occurs, dfind takes a while to give us the full list of
@@ -412,25 +370,28 @@ let run_load_script genv cmd =
         "load_error"
     in
     let env = HackEventLogger.with_init_type init_type begin fun () ->
-      Program.init genv
+      ServerInit.init genv
     end in
     env, init_type
   end
 
 let program_init genv =
   let env, init_type =
-    if genv.local_config.ServerLocalConfig.use_mini_state then
+    (* If we are saving, always start from a fresh state -- just in case
+     * incremental mode introduces any errors. *)
+    if genv.local_config.ServerLocalConfig.use_mini_state &&
+      ServerArgs.save_filename genv.options = None then
       match ServerConfig.load_mini_script genv.config with
       | None ->
-          let env = Program.init genv in
+          let env = ServerInit.init genv in
           env, "fresh"
       | Some load_mini_script ->
-          let env = Program.init ~load_mini_script genv in
+          let env = ServerInit.init ~load_mini_script genv in
           env, "mini_load"
     else
       match ServerConfig.load_script genv.config with
       | None ->
-          let env = Program.init genv in
+          let env = ServerInit.init genv in
           env, "fresh"
       | Some load_script ->
           run_load_script genv load_script
@@ -438,6 +399,7 @@ let program_init genv =
   HackEventLogger.init_end init_type;
   Hh_logger.log "Waiting for daemon(s) to be ready...";
   genv.wait_until_ready ();
+  ServerStamp.touch_stamp ();
   HackEventLogger.init_really_end init_type;
   env
 
@@ -475,7 +437,7 @@ let daemon_main options =
     Hh_logger.log "Error: another server is already running?\n";
     Exit_status.(exit Server_already_exists);
   end;
-  let config = Program.load_config () in
+  let config = ServerConfig.(load filename) in
   let local_config = ServerLocalConfig.load () in
   if Sys_utils.is_test_mode ()
   then EventLogger.init (Daemon.devnull ()) 0.0
@@ -525,7 +487,7 @@ let monitor_daemon options =
   (try Sys.rename log_link (log_link ^ ".old") with _ -> ());
   let log_file = ServerFiles.make_link_of_timestamped log_link in
   let {Daemon.pid; _} = Daemon.spawn monitor_entry (options, log_file) in
-  Printf.eprintf "Spawned %s (child pid=%d)\n" Program.name pid;
+  Printf.eprintf "Spawned %s (child pid=%d)\n" GlobalConfig.program_name pid;
   (* We are not using symlink on Windows (see Sys_utils.symlink),
      so we announce the `log_file` to the user. The `log_link`
      is only read by the client. *)
@@ -535,7 +497,7 @@ let monitor_daemon options =
 
 let start () =
   Daemon.check_entry_point (); (* this call might not return *)
-  let options = Program.parse_options () in
+  let options = ServerArgs.parse_options () in
   if ServerArgs.should_detach options
   then monitor_daemon options
   else daemon_main options

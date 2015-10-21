@@ -1746,12 +1746,13 @@ String HHVM_FUNCTION(sha1,
 #define HASH_TAB_MASK ((uint16_t)(HASH_TAB_SIZE - 1))
 
 struct PatAndRepl {
-  const String  pat;
-  const String  repl;
+  const std::string pat;
+  const std::string repl;
 
   uint16_t hash(int start, int len) const;
 
-  PatAndRepl(const String& pat, const String& repl) : pat(pat), repl(repl) { }
+  PatAndRepl(const String& pat, const String& repl)
+  : pat(pat.data(), pat.size()), repl(repl.data(), repl.size()) { }
 };
 
 using ShiftTab   = std::array<size_t, SHIFT_TAB_SIZE>;
@@ -1777,7 +1778,7 @@ public:
   : m(minLen), B(MIN(m,2)), Bp(MIN(m,2)),
     valid(initPatterns(arr)) { }
 
-  Variant translate(String source);
+  Variant translate(String source) const;
 };
 
 static inline uint16_t strtr_hash(const char *str, int len) {
@@ -1839,6 +1840,8 @@ bool WuManberReplacement::initPatterns(const Array& arr) {
     patterns.emplace_back(pattern, iter.second().toString());
   }
 
+  initTables();
+
   return true;
 }
 
@@ -1895,7 +1898,7 @@ void WuManberReplacement::initTables() {
   }
 }
 
-Variant WuManberReplacement::translate(String source) {
+Variant WuManberReplacement::translate(String source) const {
   size_t  pos      = 0,
           nextwpos = 0,
           lastpos  = source.size() - m;
@@ -1904,8 +1907,9 @@ Variant WuManberReplacement::translate(String source) {
     return false;
   }
 
-  if (prefix.size() == 0) {
-    initTables();
+  // all patterns are longer than the source
+  if (m > source.size()) {
+    return source;
   }
 
   StringBuffer  result(source.size());
@@ -1927,7 +1931,7 @@ Variant WuManberReplacement::translate(String source) {
           continue;
         }
 
-        PatAndRepl *pnr = &patterns[i];
+        const PatAndRepl *pnr = &patterns[i];
         if (pnr->pat.size() > source.size() - pos ||
             memcmp(pnr->pat.data(), source.data() + pos,
                    pnr->pat.size()) != 0) {
@@ -2020,7 +2024,7 @@ Variant strtr_fast(const String& str, const Array& arr,
 
 static constexpr int kBitsPerQword = CHAR_BIT * sizeof(uint64_t);
 
-using WuManberPtr   = std::shared_ptr<WuManberReplacement>;
+using WuManberPtr   = std::shared_ptr<const WuManberReplacement>;
 using WuManberCache = ConcurrentLRUCache<int64_t, WuManberPtr>;
 static WuManberCache wuManberCache(10);
 
@@ -2063,7 +2067,7 @@ Variant HHVM_FUNCTION(strtr,
   }
 
   if (arr.size() < 1000) {
-    WuManberReplacement replacer(arr, minlen);
+    const WuManberReplacement replacer(arr, minlen);
     return replacer.translate(str);
   }
 

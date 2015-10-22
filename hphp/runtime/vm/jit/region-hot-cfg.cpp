@@ -295,16 +295,13 @@ RegionDescPtr selectHotCFG(TransID head,
          show(*region));
   region->chainRetransBlocks();
 
-  // Relax the region guards.  Note that guard constriction doesn't
-  // properly identify all the guards of each block yet, so we can't
-  // relax the guards when they were obtained through that mechanism.
-  if (RuntimeOption::EvalRegionRelaxGuards &&
-      !RuntimeOption::EvalHHIRConstrictGuards) {
+  // Relax the region guards.
+  if (RuntimeOption::EvalRegionRelaxGuards) {
     ITRACE(3, "selectHotCFG: before optimizeProfiledGuards:\n{}\n",
            show(*region));
     optimizeProfiledGuards(*region, *profData);
   }
-  ITRACE(3, "selectHotCFG: after optimizeProfiledGuards:\n{}\n",
+  ITRACE(1, "selectHotCFG: final version after optimizeProfiledGuards:\n{}\n",
          show(*region));
   return region;
 }

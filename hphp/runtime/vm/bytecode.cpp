@@ -688,18 +688,19 @@ static std::string toStringElm(const TypedValue* tv) {
     return os.str();
   }
   if (isRefcountedType(tv->m_type) &&
-      TV_GENERIC_DISPATCH(*tv, getCount) <= 0 &&
-      !TV_GENERIC_DISPATCH(*tv, isStatic)) {
+      !TV_GENERIC_DISPATCH(*tv, checkCount)) {
     // OK in the invoking frame when running a destructor.
-    os << " ??? inner_count " << tv->m_data.parr->getCount() << " ";
+    os << " ??? inner_count " << tvGetCount(tv) << " ";
     return os.str();
   }
 
   auto print_count = [&] {
     if (TV_GENERIC_DISPATCH(*tv, isStatic)) {
       os << ":c(static)";
+    } else if (TV_GENERIC_DISPATCH(*tv, isUncounted)) {
+      os << ":c(uncounted)";
     } else {
-      os << ":c(" << TV_GENERIC_DISPATCH(*tv, getCount) << ")";
+      os << ":c(" << tvGetCount(tv) << ")";
     }
   };
 
@@ -761,13 +762,13 @@ static std::string toStringElm(const TypedValue* tv) {
       }
       continue;
     case KindOfArray:
-      assert(check_refcount_nz(tv->m_data.parr->getCount()));
+      assert(tv->m_data.parr->checkCount());
       os << tv->m_data.parr;
       print_count();
       os << ":Array";
       continue;
     case KindOfObject:
-      assert(check_refcount_nz(tv->m_data.pobj->getCount()));
+      assert(tv->m_data.pobj->checkCount());
       os << tv->m_data.pobj;
       print_count();
       os << ":Object("
@@ -775,7 +776,7 @@ static std::string toStringElm(const TypedValue* tv) {
          << ")";
       continue;
     case KindOfResource:
-      assert(check_refcount_nz(tv->m_data.pres->getCount()));
+      assert(tv->m_data.pres->checkCount());
       os << tv->m_data.pres;
       print_count();
       os << ":Resource("
@@ -1447,22 +1448,28 @@ Array getDefinedVariables(const ActRec* fp) {
 ActRec* ExecutionContext::getFrameAtDepth(int frame) {
   VMRegAnchor _;
   auto fp = vmfp();
-  for (; frame > 0; --frame) {
-    if (!fp) break;
-    fp = getPrevVMState(fp);
-  }
   if (UNLIKELY(!fp)) return nullptr;
+  auto pc = fp->func()->unit()->offsetOf(vmpc());
+  for (; frame > 0; --frame) {
+    fp = getPrevVMState(fp, &pc);
+    if (UNLIKELY(!fp)) return nullptr;
+  }
   if (fp->skipFrame()) {
-    fp = getPrevVMState(fp);
+    fp = getPrevVMState(fp, &pc);
   }
   if (UNLIKELY(!fp || fp->localsDecRefd())) return nullptr;
+  auto const curOp = fp->func()->unit()->getOp(pc);
+  if (UNLIKELY(curOp == Op::RetC || curOp == Op::RetV ||
+               curOp == Op::CreateCont || curOp == Op::Await)) {
+    return nullptr;
+  }
   assert(!fp->magicDispatch());
   return fp;
 }
 
 VarEnv* ExecutionContext::getOrCreateVarEnv(int frame) {
   auto const fp = getFrameAtDepth(frame);
-  if (!(fp->func()->attrs() & AttrMayUseVV)) {
+  if (!fp || !(fp->func()->attrs() & AttrMayUseVV)) {
     raise_error("Could not create variable environment");
   }
   if (!fp->hasVarEnv()) {
@@ -1756,7 +1763,7 @@ static bool prepareArrayArgs(ActRec* ar, const Cell args,
       if (LIKELY(!f->byRef(i))) {
         cellDup(*tvToCell(from), *to);
       } else if (LIKELY(from->m_type == KindOfRef &&
-                        from->m_data.pref->getCount() >= 2)) {
+                        from->m_data.pref->hasMultipleRefs())) {
         refDup(*from, *to);
       } else {
         if (doCufRefParamChecks && f->mustBeRef(i)) {
@@ -3018,11 +3025,8 @@ static inline void lookupClsRef(TypedValue* input,
 
 static UNUSED int innerCount(const TypedValue* tv) {
   if (isRefcountedType(tv->m_type)) {
-    if (tv->m_type == KindOfRef) {
-      return tv->m_data.pref->getRealCount();
-    } else {
-      return tv->m_data.pref->getCount();
-    }
+    return tv->m_type == KindOfRef ? tv->m_data.pref->getRealCount() :
+           tvGetCount(tv);
   }
   return -1;
 }
@@ -3057,6 +3061,7 @@ static inline TypedValue* ratchetRefs(TypedValue* result, TypedValue& tvRef,
     return &tvRef2;
   }
 
+  assert(result != &tvRef);
   return result;
 }
 
@@ -3809,7 +3814,7 @@ OPTBLD_INLINE void iopConcat(IOP_ARGS) {
   auto const s2 = cellAsVariant(*c2).toString();
   auto const s1 = cellAsCVarRef(*c1).toString();
   cellAsVariant(*c2) = concat(s2, s1);
-  assert(check_refcount_nz(c2->m_data.pstr->getCount()));
+  assert(c2->m_data.pstr->checkCount());
   vmStack().popC();
 }
 
@@ -3823,14 +3828,14 @@ OPTBLD_INLINE void iopConcatN(IOP_ARGS) {
     auto const s2 = cellAsVariant(*c2).toString();
     auto const s1 = cellAsCVarRef(*c1).toString();
     cellAsVariant(*c2) = concat(s2, s1);
-    assert(check_refcount_nz(c2->m_data.pstr->getCount()));
+    assert(c2->m_data.pstr->checkCount());
   } else if (n == 3) {
     auto const c3 = vmStack().indC(2);
     auto const s3 = cellAsVariant(*c3).toString();
     auto const s2 = cellAsCVarRef(*c2).toString();
     auto const s1 = cellAsCVarRef(*c1).toString();
     cellAsVariant(*c3) = concat3(s3, s2, s1);
-    assert(check_refcount_nz(c3->m_data.pstr->getCount()));
+    assert(c3->m_data.pstr->checkCount());
   } else {
     assert(n == 4);
     auto const c3 = vmStack().indC(2);
@@ -3840,7 +3845,7 @@ OPTBLD_INLINE void iopConcatN(IOP_ARGS) {
     auto const s2 = cellAsCVarRef(*c2).toString();
     auto const s1 = cellAsCVarRef(*c1).toString();
     cellAsVariant(*c4) = concat4(s4, s3, s2, s1);
-    assert(check_refcount_nz(c4->m_data.pstr->getCount()));
+    assert(c4->m_data.pstr->checkCount());
   }
 
   for (int i = 1; i < n; ++i) {
@@ -5017,8 +5022,18 @@ OPTBLD_INLINE void iopDimNewElem(IOP_ARGS) {
   mstate.base = ratchetRefs(result, mstate.tvRef, mstate.tvRef2);
 }
 
-template<typename F>
-static OPTBLD_INLINE void queryMImpl(PC& pc, F decode_key) {
+static OPTBLD_INLINE void mFinal(MInstrState& mstate,
+                                 int32_t nDiscard,
+                                 folly::Optional<TypedValue> result) {
+  auto& stack = vmStack();
+  for (auto i = 0; i < nDiscard; ++i) stack.popTV();
+  if (result) tvCopy(*result, *stack.allocTV());
+
+  tvUnlikelyRefcountedDecRef(mstate.tvRef);
+  tvUnlikelyRefcountedDecRef(mstate.tvRef2);
+}
+
+static OPTBLD_INLINE void queryMImpl(PC& pc, TypedValue (*decode_key)(PC&)) {
   auto nDiscard = decode_iva(pc);
   auto op = decode_oa<QueryMOp>(pc);
   auto flags = getMOpFlags(op);
@@ -5053,35 +5068,95 @@ static OPTBLD_INLINE void queryMImpl(PC& pc, F decode_key) {
       break;
   }
 
-  for (auto i = 0; i < nDiscard; ++i) vmStack().popTV();
-  tvCopy(result, *vmStack().allocTV());
+  mFinal(mstate, nDiscard, result);
+}
 
-  tvUnlikelyRefcountedDecRef(mstate.tvRef);
-  tvUnlikelyRefcountedDecRef(mstate.tvRef2);
+static inline TypedValue local_key(PC& pc) {
+  return *frame_local_inner(vmfp(), decode_la(pc));
+}
+
+static inline TypedValue int_key(PC& pc) {
+  return make_tv<KindOfInt64>(decode<int64_t>(pc));
+}
+
+static inline TypedValue str_key(PC& pc) {
+  return make_tv<KindOfStaticString>(decode_litstr(pc));
 }
 
 OPTBLD_INLINE void iopQueryML(IOP_ARGS) {
-  queryMImpl(pc, [](PC& pc) {
-    return *frame_local_inner(vmfp(), decode_la(pc));
-  });
+  queryMImpl(pc, local_key);
 }
 
 OPTBLD_INLINE void iopQueryMC(IOP_ARGS) {
-  queryMImpl(pc, [](PC& pc) {
-    return *vmStack().topC();
-  });
+  queryMImpl(pc, [](PC&) { return *vmStack().topC(); });
 }
 
 OPTBLD_INLINE void iopQueryMInt(IOP_ARGS) {
-  queryMImpl(pc, [](PC& pc) {
-    return make_tv<KindOfInt64>(decode<int64_t>(pc));
-  });
+  queryMImpl(pc, int_key);
 }
 
 OPTBLD_INLINE void iopQueryMStr(IOP_ARGS) {
-  queryMImpl(pc, [](PC& pc) {
-    return make_tv<KindOfStaticString>(decode_litstr(pc));
-  });
+  queryMImpl(pc, str_key);
+}
+
+static OPTBLD_INLINE void setMImpl(PC& pc, TypedValue (*decode_key)(PC&)) {
+  auto const nDiscard = decode_iva(pc);
+  auto const propElem = decode_oa<PropElemOp>(pc);
+  auto const key = decode_key(pc);
+
+  auto& mstate = vmMInstrState();
+  auto const topC = vmStack().topC();
+
+  switch (propElem) {
+    case PropElemOp::Prop: {
+      auto const ctx = arGetContextClass(vmfp());
+      SetProp<true>(ctx, mstate.base, key, topC);
+      break;
+    }
+    case PropElemOp::Elem: {
+      auto const result = SetElem<true>(mstate.base, key, topC);
+      if (result) {
+        tvRefcountedDecRef(topC);
+        topC->m_type = KindOfString;
+        topC->m_data.pstr = result;
+      }
+      break;
+    }
+    case PropElemOp::PropQ:
+      always_assert(false);
+  }
+
+  auto const result = *topC;
+  vmStack().discard();
+  mFinal(mstate, nDiscard, result);
+}
+
+OPTBLD_INLINE void iopSetML(IOP_ARGS) {
+  setMImpl(pc, local_key);
+}
+
+OPTBLD_INLINE void iopSetMC(IOP_ARGS) {
+  setMImpl(pc, [](PC&) { return *vmStack().indC(1); });
+}
+
+OPTBLD_INLINE void iopSetMInt(IOP_ARGS) {
+  setMImpl(pc, int_key);
+}
+
+OPTBLD_INLINE void iopSetMStr(IOP_ARGS) {
+  setMImpl(pc, str_key);
+}
+
+OPTBLD_INLINE void iopSetMNewElem(IOP_ARGS) {
+  auto const nDiscard = decode_iva(pc);
+
+  auto& mstate = vmMInstrState();
+  auto const topC = vmStack().topC();
+  SetNewElem<true>(mstate.base, topC);
+
+  auto const result = *topC;
+  vmStack().discard();
+  mFinal(mstate, nDiscard, result);
 }
 
 static inline void vgetl_body(TypedValue* fr, TypedValue* to) {
@@ -5866,31 +5941,13 @@ OPTBLD_INLINE ActRec* fPushFuncImpl(const Func* func, int numArgs) {
 OPTBLD_INLINE void iopFPushFunc(IOP_ARGS) {
   auto numArgs = decode_iva(pc);
   Cell* c1 = vmStack().topC();
-  const Func* func = nullptr;
-
-  // Throughout this function, we save obj/string/array and defer
-  // refcounting them until after the stack has been discarded.
-
-  if (isStringType(c1->m_type)) {
-    StringData* origSd = c1->m_data.pstr;
-    func = Unit::loadFunc(origSd);
-    if (func == nullptr) {
-      raise_error("Call to undefined function %s()", c1->m_data.pstr->data());
-    }
-
-    vmStack().discard();
-    ActRec* ar = fPushFuncImpl(func, numArgs);
-    ar->setThis(nullptr);
-    decRefStr(origSd);
-    return;
-  }
 
   if (c1->m_type == KindOfObject) {
     // this covers both closures and functors
     static StringData* invokeName = makeStaticString("__invoke");
     ObjectData* origObj = c1->m_data.pobj;
     const Class* cls = origObj->getVMClass();
-    func = cls->lookupMethod(invokeName);
+    auto const func = cls->lookupMethod(invokeName);
     if (func == nullptr) {
       raise_error(Strings::FUNCTION_NAME_MUST_BE_STRING);
     }
@@ -5908,40 +5965,58 @@ OPTBLD_INLINE void iopFPushFunc(IOP_ARGS) {
     return;
   }
 
-  if (c1->m_type == KindOfArray) {
-    // support: array($instance, 'method') and array('Class', 'method')
-    // which are both valid callables
-    ArrayData* origArr = c1->m_data.parr;
-    ObjectData* arrThis = nullptr;
-    HPHP::Class* arrCls = nullptr;
+  if ((c1->m_type == KindOfArray) ||
+      isStringType(c1->m_type)) {
+    // support:
+    //   array($instance, 'method')
+    //   array('Class', 'method'),
+    //   'func_name'
+    //   'class::method'
+    // which are all valid callables
+    auto origCell = *c1;
+    ObjectData* thiz = nullptr;
+    HPHP::Class* cls = nullptr;
     StringData* invName = nullptr;
 
-    func = vm_decode_function(
+    auto const func = vm_decode_function(
       tvAsCVarRef(c1),
       vmfp(),
       /* forwarding */ false,
-      arrThis,
-      arrCls,
+      thiz,
+      cls,
       invName,
       /* warn */ false
     );
     if (func == nullptr) {
-      raise_error("Invalid callable (array)");
+      if (origCell.m_type == KindOfArray) {
+        raise_error("Invalid callable (array)");
+      } else {
+        assert(isStringType(origCell.m_type));
+        raise_error("Call to undefined function %s()",
+                    origCell.m_data.pstr->data());
+      }
     }
-    assert(arrCls != nullptr);
 
     vmStack().discard();
     auto const ar = fPushFuncImpl(func, numArgs);
-    if (arrThis) {
-      arrThis->incRefCount();
-      ar->setThis(arrThis);
+    if (thiz) {
+      thiz->incRefCount();
+      ar->setThis(thiz);
+    } else if (cls) {
+      ar->setClass(cls);
     } else {
-      ar->setClass(arrCls);
+      ar->setThis(nullptr);
     }
+
     if (UNLIKELY(invName != nullptr)) {
       ar->setMagicDispatch(invName);
     }
-    decRefArr(origArr);
+    if (origCell.m_type == KindOfArray) {
+      decRefArr(origCell.m_data.parr);
+    } else {
+      assert(isStringType(origCell.m_type));
+      decRefStr(origCell.m_data.pstr);
+    }
     return;
   }
 
@@ -7391,20 +7466,15 @@ OPTBLD_INLINE void iopContValid(IOP_ARGS) {
     this_generator(vmfp())->getState() != BaseGenerator::State::Done);
 }
 
-OPTBLD_INLINE void iopContStarted(IOP_ARGS) {
-  vmStack().pushBool(
-    this_generator(vmfp())->getState() != BaseGenerator::State::Created);
-}
-
 OPTBLD_INLINE void iopContKey(IOP_ARGS) {
   Generator* cont = this_generator(vmfp());
-  if (!RuntimeOption::AutoprimeGenerators) cont->startedCheck();
+  cont->startedCheck();
   cellDup(cont->m_key, *vmStack().allocC());
 }
 
 OPTBLD_INLINE void iopContCurrent(IOP_ARGS) {
   Generator* cont = this_generator(vmfp());
-  if (!RuntimeOption::AutoprimeGenerators) cont->startedCheck();
+  cont->startedCheck();
   cellDup(cont->m_value, *vmStack().allocC());
 }
 
@@ -7870,9 +7940,8 @@ TCA dispatchImpl() {
     opPC = pc;                                                          \
     op = decode_op(pc);                                                 \
     COND_STACKTRACE("dispatch:                    ");                   \
-    ONTRACE(1,                                                          \
-            Trace::trace("dispatch: %d: %s\n", pcOff(),                 \
-                         opcodeToName(op)));                            \
+    FTRACE(1, "dispatch: {}: {}\n", pcOff(),                            \
+           instrToString(opPC, vmfp()->m_func->unit()));                \
     DISPATCH_ACTUAL();                                                  \
 } while (0)
 

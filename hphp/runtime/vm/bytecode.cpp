@@ -5056,6 +5056,7 @@ static OPTBLD_INLINE void queryMImpl(PC& pc, TypedValue (*decode_key)(PC&)) {
   TypedValue result;
   switch (op) {
     case QueryMOp::CGet:
+    case QueryMOp::CGetQuiet:
       if (mstate.base->m_type == KindOfRef) {
         mstate.base = mstate.base->m_data.pref->tv();
       }
@@ -7466,15 +7467,20 @@ OPTBLD_INLINE void iopContValid(IOP_ARGS) {
     this_generator(vmfp())->getState() != BaseGenerator::State::Done);
 }
 
+OPTBLD_INLINE void iopContStarted(IOP_ARGS) {
+  vmStack().pushBool(
+    this_generator(vmfp())->getState() != BaseGenerator::State::Created);
+}
+
 OPTBLD_INLINE void iopContKey(IOP_ARGS) {
   Generator* cont = this_generator(vmfp());
-  cont->startedCheck();
+  if (!RuntimeOption::AutoprimeGenerators) cont->startedCheck();
   cellDup(cont->m_key, *vmStack().allocC());
 }
 
 OPTBLD_INLINE void iopContCurrent(IOP_ARGS) {
   Generator* cont = this_generator(vmfp());
-  cont->startedCheck();
+  if (!RuntimeOption::AutoprimeGenerators) cont->startedCheck();
   cellDup(cont->m_value, *vmStack().allocC());
 }
 
@@ -7844,7 +7850,10 @@ OPTBLD_INLINE static TCA iopRetWrapper(TCA(*fn)(PC& pc), PC& pc) {
   interp_set_regs(fp, sp, pcOff);                                       \
   SKTRACE(5, SrcKey(liveFunc(), vmpc(), liveResumed()), "%40s %p %p\n", \
           "interpOne" #opcode " before (fp,sp)", vmfp(), vmsp());       \
-  Stats::inc(Stats::Instr_InterpOne ## opcode);                         \
+  if (Stats::enableInstrCount()) {                                      \
+    Stats::inc(Stats::Instr_Transl##opcode, -1);                        \
+    Stats::inc(Stats::Instr_InterpOne##opcode);                         \
+  }                                                                     \
   if (Trace::moduleEnabled(Trace::interpOne, 1)) {                      \
     static const StringData* cat = makeStaticString("interpOne");       \
     static const StringData* name = makeStaticString(#opcode);          \
@@ -7959,11 +7968,13 @@ TCA dispatchImpl() {
   }
 #define OPCODE_MAIN_BODY(name, imm, push, pop, flags)         \
   {                                                           \
+    if (breakOnCtlFlow && Stats::enableInstrCount()) {        \
+      Stats::inc(Stats::Instr_InterpBB##name);                \
+    }                                                         \
     retAddr = iopRetWrapper(iop##name, pc);                   \
     vmpc() = pc;                                              \
     if (breakOnCtlFlow) {                                     \
       isCtlFlow = instrIsControlFlow(Op::name);               \
-      Stats::incOp(Op::name);                                 \
     }                                                         \
     if (UNLIKELY(!pc)) {                                      \
       op = Op::name;                                          \

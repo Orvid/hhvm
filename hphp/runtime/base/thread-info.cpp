@@ -32,6 +32,7 @@
 #ifdef ENABLE_EXTENSION_PROCESS
 #include "hphp/runtime/ext/process/ext_process.h"
 #endif
+#include "hphp/runtime/vm/vm-regs.h"
 
 namespace HPHP {
 ///////////////////////////////////////////////////////////////////////////////
@@ -215,6 +216,7 @@ size_t check_request_surprise() {
     }
   }
   if (do_GC) {
+    VMRegAnchor _;
     MM().collect("surprise");
   }
 

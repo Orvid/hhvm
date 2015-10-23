@@ -411,6 +411,7 @@ static const struct {
   { OpYieldK,      {StackTop2,        Stack1,       OutUnknown      }},
   { OpContCheck,   {None,             None,         OutNone         }},
   { OpContValid,   {None,             Stack1,       OutBoolean      }},
+  { OpContStarted, {None,             Stack1,       OutBoolean      }},
   { OpContKey,     {None,             Stack1,       OutUnknown      }},
   { OpContCurrent, {None,             Stack1,       OutUnknown      }},
 
@@ -906,6 +907,7 @@ bool dontGuardAnyInputs(Op op) {
   case Op::ContCurrent:
   case Op::ContKey:
   case Op::ContValid:
+  case Op::ContStarted:
   case Op::CreateCl:
   case Op::DefCns:
   case Op::DefFunc:
@@ -1315,6 +1317,9 @@ void translateInstr(
 
   irgen::ringbufferEntry(irgs, Trace::RBTypeBytecodeStart, ni.source, 2);
   irgen::emitIncStat(irgs, Stats::Instr_TC, 1);
+  if (Stats::enableInstrCount()) {
+    irgen::emitIncStat(irgs, Stats::opToTranslStat(ni.op()), 1);
+  }
   if (Trace::moduleEnabledRelease(Trace::llvm_count, 1) ||
       RuntimeOption::EvalJitLLVMCounters) {
     irgen::gen(irgs, CountBytecode);

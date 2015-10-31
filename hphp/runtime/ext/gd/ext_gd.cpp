@@ -413,7 +413,9 @@ typedef enum {
   IMAGE_FILETYPE_WBMP,
   /* IMAGE_FILETYPE_JPEG2000 is a userland alias for IMAGE_FILETYPE_JPC */
   IMAGE_FILETYPE_XBM,
-  IMAGE_FILETYPE_ICO
+  IMAGE_FILETYPE_ICO,
+
+  IMAGE_FILETYPE_COUNT /* Must remain last */
 } image_filetype;
 
 
@@ -8397,6 +8399,8 @@ class ExifExtension final : public Extension {
     HHVM_FE(exif_tagname);
     HHVM_FE(exif_thumbnail);
 
+    HHVM_RC_INT(EXIF_USE_MBSTRING, 0);
+
     loadSystemlib();
   }
 } s_exif_extension;
@@ -8630,6 +8634,30 @@ class GdExtension final : public Extension {
     HHVM_RC_INT(IMG_FILTER_SELECTIVE_BLUR, IMAGE_FILTER_SELECTIVE_BLUR);
     HHVM_RC_INT(IMG_FILTER_SMOOTH, IMAGE_FILTER_SMOOTH);
     HHVM_RC_INT(IMG_FILTER_PIXELATE, IMAGE_FILTER_PIXELATE);
+
+#define IMAGETYPE(cns) Native::registerConstant<KindOfInt64> \
+   (makeStaticString("IMAGETYPE_" #cns), IMAGE_FILETYPE_ ## cns)
+    IMAGETYPE(GIF);
+    IMAGETYPE(JPEG);
+    IMAGETYPE(PNG);
+    IMAGETYPE(SWF);
+    IMAGETYPE(PSD);
+    IMAGETYPE(BMP);
+    IMAGETYPE(TIFF_II);
+    IMAGETYPE(TIFF_MM);
+    IMAGETYPE(JPC);
+    IMAGETYPE(JP2);
+    IMAGETYPE(JPX);
+    IMAGETYPE(JB2);
+    IMAGETYPE(IFF);
+    IMAGETYPE(WBMP);
+    IMAGETYPE(XBM);
+    IMAGETYPE(ICO);
+    IMAGETYPE(UNKNOWN);
+    IMAGETYPE(COUNT);
+    IMAGETYPE(SWC);
+    HHVM_RC_INT(IMAGETYPE_JPEG2000, IMAGE_FILETYPE_JPC);
+#undef IMAGETYPE
 
 #ifdef GD_VERSION_STRING
     HHVM_RC_STR(GD_VERSION, GD_VERSION_STRING);

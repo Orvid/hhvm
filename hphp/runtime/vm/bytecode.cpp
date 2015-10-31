@@ -333,15 +333,10 @@ VarEnv::VarEnv()
   , m_global(true)
 {
   TRACE(3, "Creating VarEnv %p [global scope]\n", this);
-  auto globals = new (MM().objMalloc(sizeof(GlobalsArray)))
-    GlobalsArray(&m_nvTable);
-  assert(globals->hasExactlyOneRef());
-
-  auto globalArray = make_tv<KindOfArray>(globals->asArrayData());
-  m_nvTable.set(s_GLOBALS.get(), &globalArray);
-
-  assert(globals->hasMultipleRefs());
-  globals->decRefCount();
+  auto globals_var = Variant::attach(
+    new (MM().objMalloc(sizeof(GlobalsArray))) GlobalsArray(&m_nvTable)
+  );
+  m_nvTable.set(s_GLOBALS.get(), globals_var.asTypedValue());
 }
 
 VarEnv::VarEnv(ActRec* fp, ExtraArgs* eArgs)
@@ -380,8 +375,11 @@ VarEnv::~VarEnv() {
      * not supposed to run destructors for objects that are live at
      * the end of a request.
      */
+    m_nvTable.unset(s_GLOBALS.get());
     m_nvTable.leak();
   }
+  // at this point, m_nvTable is destructed, and GlobalsArray
+  // has a dangling pointer to it.
 }
 
 void VarEnv::deallocate(ActRec* fp) {
@@ -2701,7 +2699,7 @@ bool ExecutionContext::evalPHPDebugger(TypedValue* retval,
                                        int frame) {
   assert(retval);
   // The code has "<?php" prepended already
-  Unit* unit = compile_string(code->data(), code->size());
+  auto unit = compile_string(code->data(), code->size());
   if (unit == nullptr) {
     raise_error("Syntax error");
     tvWriteNull(retval);
@@ -2719,11 +2717,13 @@ bool ExecutionContext::evalPHPDebugger(TypedValue* retval,
   assert(retval);
   always_assert(!RuntimeOption::RepoAuthoritative);
 
-  bool failed = true;
-  ActRec *fp = vmfp();
+  VMRegAnchor _;
+
+  auto failed = true;
+  auto fp = vmfp();
   if (fp) {
     for (; frame > 0; --frame) {
-      ActRec* prevFp = getPrevVMState(fp);
+      auto prevFp = getPrevVMState(fp);
       if (!prevFp) {
         // To be safe in case we failed to get prevFp. This would mean we've
         // been asked to eval in a frame which is beyond the top of the stack.
@@ -4549,8 +4549,7 @@ OPTBLD_INLINE TCA ret(PC& pc) {
     }
   } else if (vmfp()->func()->isNonAsyncGenerator()) {
     // Mark the generator as finished and store the return value.
-    assert(isNullType(retval.m_type));
-    frame_generator(vmfp())->ret();
+    frame_generator(vmfp())->ret(retval);
 
     // Push return value of next()/send()/raise().
     vmStack().pushNull();
@@ -4976,10 +4975,8 @@ static OPTBLD_INLINE void elemDispatch(MOpFlags flags, TypedValue key) {
   mstate.base = ratchetRefs(result, mstate.tvRef, mstate.tvRef2);
 }
 
-static OPTBLD_INLINE void dimImpl(PC& pc, TypedValue key) {
-  auto op = decode_oa<PropElemOp>(pc);
-  auto flags = decode_oa<MOpFlags>(pc);
-
+static OPTBLD_INLINE void dimDispatch(PropElemOp op, MOpFlags flags,
+                                      TypedValue key) {
   switch (op) {
     case PropElemOp::Prop:
       propDispatch(flags, key);
@@ -4991,6 +4988,13 @@ static OPTBLD_INLINE void dimImpl(PC& pc, TypedValue key) {
       elemDispatch(flags, key);
       break;
   }
+}
+
+static OPTBLD_INLINE void dimImpl(PC& pc, TypedValue key) {
+  auto op = decode_oa<PropElemOp>(pc);
+  auto flags = decode_oa<MOpFlags>(pc);
+
+  dimDispatch(op, flags, key);
 }
 
 OPTBLD_INLINE void iopDimL(IOP_ARGS) {
@@ -5036,36 +5040,36 @@ static OPTBLD_INLINE void mFinal(MInstrState& mstate,
 static OPTBLD_INLINE void queryMImpl(PC& pc, TypedValue (*decode_key)(PC&)) {
   auto nDiscard = decode_iva(pc);
   auto op = decode_oa<QueryMOp>(pc);
-  auto flags = getMOpFlags(op);
   auto propElem = decode_oa<PropElemOp>(pc);
   auto key = decode_key(pc);
-
-  switch (propElem) {
-    case PropElemOp::Prop:
-      propDispatch(flags, key);
-      break;
-    case PropElemOp::PropQ:
-      propQDispatch(flags, key);
-      break;
-    case PropElemOp::Elem:
-      elemDispatch(flags, key);
-      break;
-  }
 
   auto& mstate = vmMInstrState();
   TypedValue result;
   switch (op) {
     case QueryMOp::CGet:
     case QueryMOp::CGetQuiet:
-      if (mstate.base->m_type == KindOfRef) {
-        mstate.base = mstate.base->m_data.pref->tv();
-      }
-      tvDup(*mstate.base, result);
+      dimDispatch(propElem, getQueryMOpFlags(op), key);
+      tvDup(*tvToCell(mstate.base), result);
       break;
 
     case QueryMOp::Isset:
     case QueryMOp::Empty:
-      not_implemented();
+      result.m_type = KindOfBoolean;
+      switch (propElem) {
+        case PropElemOp::Prop:
+        case PropElemOp::PropQ: {
+          auto const ctx = arGetContextClass(vmfp());
+          result.m_data.num = op == QueryMOp::Empty
+            ? IssetEmptyProp<true>(ctx, mstate.base, key)
+            : IssetEmptyProp<false>(ctx, mstate.base, key);
+          break;
+        }
+        case PropElemOp::Elem:
+          result.m_data.num = op == QueryMOp::Empty
+            ? IssetEmptyElem<true>(mstate.base, key)
+            : IssetEmptyElem<false>(mstate.base, key);
+          break;
+      }
       break;
   }
 
@@ -7481,6 +7485,23 @@ OPTBLD_INLINE void iopContKey(IOP_ARGS) {
 OPTBLD_INLINE void iopContCurrent(IOP_ARGS) {
   Generator* cont = this_generator(vmfp());
   if (!RuntimeOption::AutoprimeGenerators) cont->startedCheck();
+
+  if(cont->getState() == BaseGenerator::State::Done) {
+    vmStack().pushNull();
+  } else {
+    cellDup(cont->m_value, *vmStack().allocC());
+  }
+}
+
+OPTBLD_INLINE void iopContGetReturn(IOP_ARGS) {
+  Generator* cont = this_generator(vmfp());
+  if (!RuntimeOption::AutoprimeGenerators) cont->startedCheck();
+
+  if(!cont->successfullyFinishedExecuting()) {
+    SystemLib::throwExceptionObject("Cannot get return value of a generator "
+                                    "that hasn't returned");
+  }
+
   cellDup(cont->m_value, *vmStack().allocC());
 }
 

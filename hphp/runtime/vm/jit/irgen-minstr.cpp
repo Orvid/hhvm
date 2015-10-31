@@ -551,17 +551,11 @@ SSATmp* getKey(MTS& env) {
   return key;
 }
 
-SSATmp* getUnconstrainedValue(MTS& env) {
+SSATmp* getValue(MTS& env) {
   // If an instruction takes an rhs, it's always input 0.
   assertx(env.mii.valCount() == 1);
   const int kValIdx = 0;
   return getInput(env, kValIdx, DataTypeGeneric);
-}
-
-SSATmp* getValue(MTS& env) {
-  auto const val = getUnconstrainedValue(env);
-  env.irb.constrainValue(val, DataTypeSpecific);
-  return val;
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -663,6 +657,15 @@ SimpleOp computeSimpleCollectionOp(
   return SimpleOp::None;
 }
 
+/*
+ * Punt if the given base type isn't known to be boxed or unboxed.
+ */
+void checkGenBase(Type baseType) {
+  if (baseType.maybe(TCell) && baseType.maybe(TBoxedCell)) {
+    PUNT(MInstr-GenBase);
+  }
+}
+
 //////////////////////////////////////////////////////////////////////
 // Base ops
 
@@ -674,10 +677,7 @@ void emitBaseLCR(MTS& env) {
   auto base = getInput(env, env.iInd, DataTypeGeneric);
   auto baseType = base->type();
 
-  if (!(baseType <= TCell ||
-        baseType <= TBoxedCell)) {
-    PUNT(MInstr-GenBase);
-  }
+  checkGenBase(baseType);
 
   // Check for Uninit and warn if needed.
   if (baseL.isLocal() && (mia & MIA_warn) && baseType <= TUninit) {
@@ -1048,13 +1048,16 @@ void emitElem(MTS& env) {
   auto const mia = MInstrAttr(env.mii.getAttr(mCode) & MIA_intermediate);
   auto const key = getKey(env);
 
-  // Fast path for the common/easy case
-  const bool warn = mia & MIA_warn;
-  const bool unset = mia & MIA_unset;
-  const bool define = mia & MIA_define;
-  if (env.base.type <= TPtrToArr &&
-      !unset && !define &&
-      (key->isA(TInt) || key->isA(TStr))) {
+  auto const warn   = mia & MIA_warn;
+  auto const unset  = mia & MIA_unset;
+  auto const define = mia & MIA_define;
+
+  assertx(!define || !unset);
+  assertx(!define || !warn);
+
+  // Fast path for the common/easy case.
+  if (env.base.type <= TPtrToArr && !unset && !define &&
+      key->type().subtypeOfAny(TInt, TStr)) {
     setBase(
       env,
       gen(env,
@@ -1065,18 +1068,15 @@ void emitElem(MTS& env) {
     return;
   }
 
-  if (env.base.type <= TPtrToArr &&
-      define &&
-      !unset &&
-      key->type().subtypeOfAny(TInt,TStr)) {
+  if (env.base.type <= TPtrToArr && (define || unset) &&
+      key->type().subtypeOfAny(TInt, TStr)) {
     setBase(
       env,
-      gen(env, ElemArrayD, env.base.value, key)
+      gen(env, unset ? ElemArrayU : ElemArrayD, env.base.value, key)
     );
     return;
   }
 
-  assertx(!(define && unset));
   if (unset) {
     auto const uninit = ptrToUninit(env);
     auto const baseType = env.base.type.strip();
@@ -1278,7 +1278,9 @@ void emitRatchetRefs(MTS& env) {
 
       // Adjust base pointer.
       assertx(env.base.type <= TPtrToGen);
-      return misRef2Addr;
+
+      // See the comment in ratchetRefs().
+      return misLea(env, offsetof(MInstrState, tvRef2));
     },
     [&] { // Taken: tvRef is Uninit. Do nothing.
       return env.base.value;
@@ -1537,46 +1539,37 @@ SSATmp* emitPairGet(IRGS& env, SSATmp* base, SSATmp* key) {
   return result;
 }
 
-void emitPackedArrayIsset(MTS& env) {
-  assertx(env.base.type.arrSpec().kind() == ArrayData::kPackedKind);
-  auto const key = getKey(env);
+SSATmp* emitPackedArrayIsset(IRGS& env, SSATmp* base, SSATmp* key) {
+  assertx(base->type().arrSpec().kind() == ArrayData::kPackedKind);
 
-  auto const type = packedArrayElemType(env.base.value, key);
-  if (type <= TNull) {             // not set, or null
-    env.result = cns(env, false);
-    return;
-  }
+  auto const type = packedArrayElemType(base, key);
+  if (type <= TNull) return cns(env, false);
 
   if (key->hasConstVal()) {
     auto const idx = key->intVal();
-    switch (packedArrayBoundsStaticCheck(env.base.type, idx)) {
-    case PackedBounds::In:
-      {
-        if (!type.maybe(TNull)) {
-          env.result = cns(env, true);
-          return;
-        }
-        auto const elemAddr = gen(env, LdPackedArrayElemAddr,
-                                  type.ptr(Ptr::Arr), env.base.value, key);
-        env.result = gen(env, IsNTypeMem, TNull, elemAddr);
-      }
-      return;
+    switch (packedArrayBoundsStaticCheck(base->type(), idx)) {
+    case PackedBounds::In: {
+      if (!type.maybe(TNull)) return cns(env, true);
+
+      auto const elemAddr = gen(env, LdPackedArrayElemAddr,
+                                type.ptr(Ptr::Arr), base, key);
+      return gen(env, IsNTypeMem, TNull, elemAddr);
+    }
     case PackedBounds::Out:
-      env.result = cns(env, false);
-      return;
+      return cns(env, false);
     case PackedBounds::Unknown:
       break;
     }
   }
 
-  env.result = cond(
+  return cond(
     env,
     [&] (Block* taken) {
-      gen(env, CheckPackedArrayBounds, taken, env.base.value, key);
+      gen(env, CheckPackedArrayBounds, taken, base, key);
     },
     [&] { // Next:
       auto const elemAddr = gen(env, LdPackedArrayElemAddr,
-                                type.ptr(Ptr::Arr), env.base.value, key);
+                                type.ptr(Ptr::Arr), base, key);
       return gen(env, IsNTypeMem, TNull, elemAddr);
     },
     [&] { // Taken:
@@ -1735,6 +1728,7 @@ void emitSetProp(MTS& env) {
     }
     auto const oldVal  = gen(env, LdMem, cellTy, cellPtr);
 
+    env.irb.constrainValue(value, DataTypeCountness);
     gen(env, IncRef, value);
     gen(env, StMem, cellPtr, value);
     gen(env, DecRef, oldVal);
@@ -1839,33 +1833,32 @@ void emitVGetElem(MTS& env) {
   env.result = gen(env, VGetElem, env.base.value, key, tvRefPtr(env));
 }
 
-void emitIssetElem(MTS& env) {
-  switch (env.simpleOp) {
+SSATmp* emitIssetElem(IRGS& env, SSATmp* base, SSATmp* key, SimpleOp simpleOp) {
+  switch (simpleOp) {
   case SimpleOp::Array:
   case SimpleOp::StructArray:
   case SimpleOp::ProfiledPackedArray:
   case SimpleOp::ProfiledStructArray:
-    env.result = gen(env, ArrayIsset, env.base.value, getKey(env));
-    break;
+    return gen(env, ArrayIsset, base, key);
   case SimpleOp::PackedArray:
-    emitPackedArrayIsset(env);
-    break;
+    return emitPackedArrayIsset(env, base, key);
   case SimpleOp::String:
-    env.result = gen(env, StringIsset, env.base.value, getKey(env));
-    break;
+    return gen(env, StringIsset, base, key);
   case SimpleOp::Vector:
-    env.result = gen(env, VectorIsset, env.base.value, getKey(env));
-    break;
+    return gen(env, VectorIsset, base, key);
   case SimpleOp::Pair:
-    env.result = gen(env, PairIsset, env.base.value, getKey(env));
-    break;
+    return gen(env, PairIsset, base, key);
   case SimpleOp::Map:
-    env.result = gen(env, MapIsset, env.base.value, getKey(env));
-    break;
+    return gen(env, MapIsset, base, key);
   case SimpleOp::None:
-    env.result = gen(env, IssetElem, env.base.value, getKey(env));
-    break;
+    return gen(env, IssetElem, base, key);
   }
+
+  always_assert(false);
+}
+
+void emitIssetElem(MTS& env) {
+  env.result = emitIssetElem(env, env.base.value, getKey(env), env.simpleOp);
 }
 
 void emitEmptyElem(MTS& env) {
@@ -1928,6 +1921,7 @@ void emitSetElem(MTS& env) {
     } else if (t == TCountedStr) {
       // Base is a string. Stack result is a new string so we're responsible for
       // decreffing value.
+      env.irb.constrainValue(value, DataTypeCountness);
       env.result = result;
       gen(env, DecRef, value);
     } else {
@@ -1943,7 +1937,7 @@ void emitSetElem(MTS& env) {
 
 void emitSetWithRefElem(MTS& env) {
   auto const key = getUnconstrainedKey(env);
-  auto const val = getUnconstrainedValue(env);
+  auto const val = getValue(env);
   gen(env, SetWithRefElem, env.base.value, key, val, tvRefPtr(env));
   env.result = nullptr;
 }
@@ -2242,15 +2236,6 @@ TypeConstraint mInstrBaseConstraint(const IRGS& env, Type predictedType) {
 namespace {
 
 /*
- * Punt if the given base type isn't known to be boxed or unboxed.
- */
-void checkGenBase(Type baseType) {
-  if (baseType.maybe(TCell) && baseType.maybe(TBoxedCell)) {
-    PUNT(MInstr-GenBase);
-  }
-}
-
-/*
  * Determine which simple collection op to use for the given base and key
  * types.
  */
@@ -2373,8 +2358,10 @@ SSATmp* ratchetRefs(IRGS& env, SSATmp* base) {
       // Reset tvRef.
       gen(env, StMem, tvRef, cns(env, TUninit));
 
-      // Adjust base pointer.
-      return tvRef2;
+      // Adjust base pointer.  Don't use 'tvRef2' here so that we don't reuse
+      // the temp.  This will let us elide uses of the register for 'tvRef2',
+      // until the Jmp we're going to emit here.
+      return tvRef2Ptr(env);
     }
   );
 }
@@ -2470,15 +2457,17 @@ SSATmp* elemImpl(IRGS& env, MOpFlags flags, SSATmp* key) {
   auto const basePtr = gen(env, LdMBase, TPtrToGen);
   auto const baseType = base ? base->type() : basePtr->type().deref();
 
-  if (base && base->isA(TArr) && !unset &&
-      key->type().subtypeOfAny(TInt, TStr)) {
-    assertx(!define || !warn);
+  assertx(!define || !unset);
+  assertx(!define || !warn);
+
+  if (base && base->isA(TArr) && key->type().subtypeOfAny(TInt, TStr)) {
     env.irb->constrainValue(base, DataTypeSpecific);
-    if (define) return gen(env, ElemArrayD, basePtr, key);
+    if (define || unset) {
+      return gen(env, unset ? ElemArrayU : ElemArrayD, basePtr, key);
+    }
     return gen(env, warn ? ElemArrayW : ElemArray, base, key);
   }
 
-  assertx(!define || !unset);
   if (unset) {
     env.irb->constrainValue(base, DataTypeSpecific);
     if (baseType <= TStr) {
@@ -2587,7 +2576,7 @@ void queryMImpl(IRGS& env, int32_t nDiscard, QueryMOp query,
     switch (query) {
       case QueryMOp::CGet:
       case QueryMOp::CGetQuiet: {
-        auto const flags = getMOpFlags(query);
+        auto const flags = getQueryMOpFlags(query);
         switch (propElem) {
           case PropElemOp::Prop:
           case PropElemOp::PropQ:
@@ -2599,10 +2588,27 @@ void queryMImpl(IRGS& env, int32_t nDiscard, QueryMOp query,
         }
         always_assert(false);
       }
+
       case QueryMOp::Isset:
+        switch (propElem) {
+          case PropElemOp::Prop:
+          case PropElemOp::PropQ:
+            return gen(env, IssetProp, objBase, key);
+          case PropElemOp::Elem:
+            auto const realBase = simpleOp == SimpleOp::None ? basePtr : base;
+            return emitIssetElem(env, realBase, key, simpleOp);
+        }
+
       case QueryMOp::Empty:
-        not_implemented();
+        switch (propElem) {
+          case PropElemOp::Prop:
+          case PropElemOp::PropQ:
+            return gen(env, EmptyProp, objBase, key);
+          case PropElemOp::Elem:
+            return gen(env, EmptyElem, basePtr, key);
+        }
     }
+
     always_assert(false);
   }();
 
@@ -2644,12 +2650,17 @@ Block* makeCatchSet(IRGS& env, bool isSetWithRef = false) {
     auto const val = gen(env, LdUnwinderValue, TCell);
     push(env, val);
   }
+
+  // The minstr is done here, so we want to drop a FinishMemberOp to kill off
+  // stores to MIState.
+  gen(env, FinishMemberOp);
+
   gen(env, Jmp, makeExit(env, nextBcOff(env)));
   return block;
 }
 
 SSATmp* setPropImpl(IRGS& env, SSATmp* key) {
-  auto const value = topC(env);
+  auto const value = topC(env, BCSPOffset{0}, DataTypeGeneric);
   auto base = env.irb->fs().memberBaseValue();
   auto const basePtr = gen(env, LdMBase, TPtrToGen);
 
@@ -2674,12 +2685,13 @@ SSATmp* setPropImpl(IRGS& env, SSATmp* key) {
       propPtr = gen(env, UnboxPtr, propPtr);
     }
 
+    env.irb->constrainValue(value, DataTypeCountness);
     auto const oldVal = gen(env, LdMem, propTy, propPtr);
     gen(env, IncRef, value);
     gen(env, StMem, propPtr, value);
     gen(env, DecRef, oldVal);
   } else {
-    gen(env, SetProp, makeCatchSet(env), basePtr, key, value);
+    gen(env, SetProp, makeCatchSet(env), base, key, value);
   }
 
   return value;
@@ -2761,7 +2773,7 @@ SSATmp* emitArraySet(IRGS& env, SSATmp* key, SSATmp* value) {
 }
 
 SSATmp* setElemImpl(IRGS& env, SSATmp* key) {
-  auto value = topC(env);
+  auto value = topC(env, BCSPOffset{0}, DataTypeGeneric);
   auto const base = env.irb->fs().memberBaseValue();
   auto const simpleOp =
     base ? simpleCollectionOp(base->type(), key->type(), false)
@@ -2805,6 +2817,7 @@ SSATmp* setElemImpl(IRGS& env, SSATmp* key) {
       } else if (t == TCountedStr) {
         // Base is a string. Stack result is a new string so we're responsible
         // for decreffing value.
+        env.irb->constrainValue(value, DataTypeCountness);
         gen(env, DecRef, value);
         value = result;
       } else {

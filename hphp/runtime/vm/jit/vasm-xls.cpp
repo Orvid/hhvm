@@ -1026,10 +1026,10 @@ void Vxls::update(unsigned pos) {
   for (auto i = active.begin(); i != end;) {
     auto ivl = *i;
     if (pos >= ivl->end()) {
-      *i = *(--end);
+      *i = *--end;
       if (!ivl->next) free_spill_slot(ivl);
     } else if (!ivl->covers(pos)) {
-      *i = *(--end);
+      *i = *--end;
       inactive.push_back(ivl);
     } else {
       i++;
@@ -1042,10 +1042,10 @@ void Vxls::update(unsigned pos) {
   for (auto i = inactive.begin(); i != end;) {
     auto ivl = *i;
     if (pos >= ivl->end()) {
-      *i = *(--end);
+      *i = *--end;
       if (!ivl->next) free_spill_slot(ivl);
     } else if (ivl->covers(pos)) {
-      *i = *(--end);
+      *i = *--end;
       active.push_back(ivl);
     } else {
       i++;
@@ -1326,7 +1326,6 @@ void Vxls::spill(Interval* ivl) {
 // again before their first use position that requires a register.
 void Vxls::spillOthers(Interval* current, PhysReg r) {
   auto cur_start = current->start();
-
   auto end = active.end();
   for (auto i = active.begin(); i != end;) {
     auto other = *i;
@@ -1334,11 +1333,10 @@ void Vxls::spillOthers(Interval* current, PhysReg r) {
       i++;
       continue;
     }
-    *i = *(--end);
+    *i = *--end;
     spillAfter(other, cur_start);
   }
   active.erase(end, active.end());
-
   end = inactive.end();
   for (auto i = inactive.begin(); i != end;) {
     auto other = *i;
@@ -1351,7 +1349,7 @@ void Vxls::spillOthers(Interval* current, PhysReg r) {
       i++;
       continue;
     }
-    *i = *(--end);
+    *i = *--end;
     spillAfter(other, cur_start);
   }
   inactive.erase(end, inactive.end());

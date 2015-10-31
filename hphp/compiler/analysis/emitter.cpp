@@ -3161,7 +3161,9 @@ bool EmitterVisitor::visit(ConstructPtr node) {
 
     char retSym = StackSym::C;
     if (visit(r->getRetExp())) {
-      if (r->getRetExp()->getContext() & Expression::RefValue) {
+      if (r->getRetExp()->getContext() & Expression::RefValue &&
+          // Generators don't support returning by references
+          !m_curFunc->isGenerator) {
         emitConvertToVar(e);
         retSym = StackSym::V;
       } else {
@@ -5034,12 +5036,14 @@ size_t EmitterVisitor::emitMOp(
   bool allowW,
   bool rhsVal,
   Emitter& e,
-  MOpFlags baseFlags,
-  MOpFlags dimFlags
+  MOpFlags flags
 ) {
   auto stackIdx = [&](int i) {
     return m_evalStack.actualSize() - 1 - m_evalStack.getActualPos(i);
   };
+
+  auto const baseFlags =
+    MOpFlags(uint8_t(flags) & uint8_t(MOpFlags::WarnDefine));
 
   // Emit the base location operation.
   auto sym = m_evalStack.get(iFirst);
@@ -5128,13 +5132,13 @@ size_t EmitterVisitor::emitMOp(
 
     auto doDim = [&](PropElemOp op) {
       if (flavor == StackSym::L) {
-        e.DimL(m_evalStack.getLoc(i), op, dimFlags);
+        e.DimL(m_evalStack.getLoc(i), op, flags);
       } else if (flavor == StackSym::I) {
-        e.DimInt(m_evalStack.getInt(i), op, dimFlags);
+        e.DimInt(m_evalStack.getInt(i), op, flags);
       } else if (flavor == StackSym::T) {
-        e.DimStr(m_evalStack.getName(i), op, dimFlags);
+        e.DimStr(m_evalStack.getName(i), op, flags);
       } else {
-        e.DimC(stackIdx(i), op, dimFlags);
+        e.DimC(stackIdx(i), op, flags);
       }
     };
 
@@ -5153,7 +5157,7 @@ size_t EmitterVisitor::emitMOp(
         break;
       case StackSym::W:
         if (allowW) {
-          e.DimNewElem(dimFlags);
+          e.DimNewElem(flags);
         } else {
           throw IncludeTimeFatalException(e.getNode(),
                                           "Cannot use [] for reading");
@@ -5402,6 +5406,28 @@ void EmitterVisitor::emitAGet(Emitter& e) {
   }
 }
 
+void EmitterVisitor::emitQueryMOp(int iFirst, int iLast, Emitter& e,
+                                  QueryMOp op) {
+  auto const flags = getQueryMOpFlags(op);
+  auto const stackCount = emitMOp(iFirst, iLast, false, false, e, flags);
+
+  auto const sym = m_evalStack.get(iLast);
+  if (auto const pe = symToPropElem(e, sym, false)) {
+    switch (StackSym::GetSymFlavor(sym)) {
+      case StackSym::L:
+        return e.QueryML(stackCount, op, *pe, m_evalStack.getLoc(iLast));
+      case StackSym::C:
+        return e.QueryMC(stackCount, op, *pe);
+      case StackSym::I:
+        return e.QueryMInt(stackCount, op, *pe, m_evalStack.getInt(iLast));
+      case StackSym::T:
+        return e.QueryMStr(stackCount, op, *pe, m_evalStack.getName(iLast));
+    }
+  }
+
+  always_assert(false);
+}
+
 void EmitterVisitor::emitCGet(Emitter& e) {
   if (checkIfStackEmpty("CGet*")) return;
   LocationGuard loc(e, m_tempLoc);
@@ -5432,25 +5458,7 @@ void EmitterVisitor::emitCGet(Emitter& e) {
     }
   } else {
     if (RuntimeOption::EvalEmitNewMInstrs) {
-      auto const stackCount =
-        emitMOp(i, iLast, false, false, e, MOpFlags::Warn, MOpFlags::Warn);
-
-      auto const sym = m_evalStack.get(iLast);
-      if (auto const pe = symToPropElem(e, sym, false)) {
-        auto const op = QueryMOp::CGet;
-        switch (StackSym::GetSymFlavor(sym)) {
-          case StackSym::L:
-            return e.QueryML(stackCount, op, *pe, m_evalStack.getLoc(iLast));
-          case StackSym::C:
-            return e.QueryMC(stackCount, op, *pe);
-          case StackSym::I:
-            return e.QueryMInt(stackCount, op, *pe, m_evalStack.getInt(iLast));
-          case StackSym::T:
-            return e.QueryMStr(stackCount, op, *pe, m_evalStack.getName(iLast));
-        }
-      }
-
-      always_assert(false);
+      return emitQueryMOp(i, iLast, e, QueryMOp::CGet);
     }
 
     std::vector<uchar> vectorImm;
@@ -5816,6 +5824,10 @@ void EmitterVisitor::emitIsset(Emitter& e) {
       }
     }
   } else {
+    if (RuntimeOption::EvalEmitNewMInstrs) {
+      return emitQueryMOp(i, iLast, e, QueryMOp::Isset);
+    }
+
     std::vector<uchar> vectorImm;
     buildVectorImm(vectorImm, i, iLast, false, e);
     e.IssetM(vectorImm);
@@ -5864,6 +5876,10 @@ void EmitterVisitor::emitEmpty(Emitter& e) {
       }
     }
   } else {
+    if (RuntimeOption::EvalEmitNewMInstrs) {
+      return emitQueryMOp(i, iLast, e, QueryMOp::Empty);
+    }
+
     std::vector<uchar> vectorImm;
     buildVectorImm(vectorImm, i, iLast, false, e);
     e.EmptyM(vectorImm);
@@ -5938,7 +5954,7 @@ void EmitterVisitor::emitSet(Emitter& e) {
   } else {
     if (RuntimeOption::EvalEmitNewMInstrs) {
       auto const stackCount =
-        emitMOp(i, iLast, true, true, e, MOpFlags::Define, MOpFlags::Define);
+        emitMOp(i, iLast, true, true, e, MOpFlags::Define);
 
       auto const sym = m_evalStack.get(iLast);
       if (auto const pe = symToPropElem(e, sym, true)) {
@@ -9506,6 +9522,7 @@ enum GeneratorMethod {
   METH_CURRENT,
   METH_KEY,
   METH_REWIND,
+  METH_GETRETURN,
 };
 
 typedef hphp_hash_map<const StringData*, GeneratorMethod,
@@ -9521,6 +9538,7 @@ StaticString s_current("current");
 StaticString s_key("key");
 StaticString s_throw("throw");
 StaticString s_rewind("rewind");
+StaticString s_getReturn("getReturn");
 
 StaticString genCls("Generator");
 StaticString asyncGenCls("HH\\AsyncGenerator");
@@ -9538,7 +9556,8 @@ ContMethMapT s_genMethods = {
     {s_current, GeneratorMethod::METH_CURRENT},
     {s_key, GeneratorMethod::METH_KEY},
     {s_throw, GeneratorMethod::METH_RAISE},
-    {s_rewind, GeneratorMethod::METH_REWIND}
+    {s_rewind, GeneratorMethod::METH_REWIND},
+    {s_getReturn, GeneratorMethod::METH_GETRETURN}
   };
 }
 
@@ -9631,6 +9650,11 @@ static int32_t emitGeneratorMethod(UnitEmitter& ue,
     }
     case METH_REWIND: {
       ue.emitOp(OpNull);
+      ue.emitOp(OpRetC);
+      break;
+    }
+    case METH_GETRETURN: {
+      ue.emitOp(OpContGetReturn);
       ue.emitOp(OpRetC);
       break;
     }

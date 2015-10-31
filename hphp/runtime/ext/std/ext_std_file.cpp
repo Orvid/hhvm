@@ -427,7 +427,7 @@ Variant HHVM_FUNCTION(fgetss,
 
 Variant fscanfImpl(const Resource& handle,
                    const String& format,
-                   const std::vector<Variant*>& args) {
+                   const req::vector<Variant*>& args) {
   CHECK_HANDLE(handle, f);
   String line = f->readLine();
   if (line.length() == 0) {
@@ -445,8 +445,8 @@ TypedValue* HHVM_FN(fscanf)(ActRec* ar) {
   if (ar->numArgs() < 2) {
     return arReturn(ar, false);
   }
-
-  std::vector<Variant*> args;
+  req::vector<Variant*> args;
+  args.reserve(ar->numArgs() - 2);
   for (int i = 2; i < ar->numArgs(); ++i) {
     args.push_back(getArg<KindOfRef>(ar, i));
   }
@@ -2153,6 +2153,14 @@ void StandardExtension::initFile() {
   Native::registerConstant(s_STDIN.get(),  BuiltinFiles::GetSTDIN);
   Native::registerConstant(s_STDOUT.get(), BuiltinFiles::GetSTDOUT);
   Native::registerConstant(s_STDERR.get(), BuiltinFiles::GetSTDERR);
+
+  HHVM_RC_INT(INI_SCANNER_NORMAL, k_INI_SCANNER_NORMAL);
+  HHVM_RC_INT(INI_SCANNER_RAW,    k_INI_SCANNER_RAW);
+
+  HHVM_RC_INT(PATHINFO_BASENAME,  PHP_PATHINFO_BASENAME);
+  HHVM_RC_INT(PATHINFO_DIRNAME,   PHP_PATHINFO_DIRNAME);
+  HHVM_RC_INT(PATHINFO_EXTENSION, PHP_PATHINFO_EXTENSION);
+  HHVM_RC_INT(PATHINFO_FILENAME,  PHP_PATHINFO_FILENAME);
 
   HHVM_FE(fopen);
   HHVM_FE(popen);

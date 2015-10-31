@@ -2873,6 +2873,16 @@ class opensslExtension final : public Extension {
 
     HHVM_RC_STR_SAME(OPENSSL_VERSION_TEXT);
 
+    HHVM_RC_INT_SAME(X509_PURPOSE_SSL_CLIENT);
+    HHVM_RC_INT_SAME(X509_PURPOSE_SSL_SERVER);
+    HHVM_RC_INT_SAME(X509_PURPOSE_NS_SSL_SERVER);
+    HHVM_RC_INT_SAME(X509_PURPOSE_SMIME_SIGN);
+    HHVM_RC_INT_SAME(X509_PURPOSE_SMIME_ENCRYPT);
+    HHVM_RC_INT_SAME(X509_PURPOSE_CRL_SIGN);
+#ifdef X509_PURPOSE_ANY
+    HHVM_RC_INT_SAME(X509_PURPOSE_ANY);
+#endif
+
     HHVM_FE(openssl_csr_export_to_file);
     HHVM_FE(openssl_csr_export);
     HHVM_FE(openssl_csr_get_public_key);

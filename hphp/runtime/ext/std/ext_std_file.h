@@ -61,9 +61,8 @@ const int64_t k_SCANDIR_SORT_ASCENDING = 0;
 const int64_t k_SCANDIR_SORT_DESCENDING = 1;
 const int64_t k_SCANDIR_SORT_NONE = 2;
 
-// This can probably be removed when we register this constant via HNI
-// in the appropriate extension or global constants file
-extern const int64_t k_INI_SCANNER_NORMAL;
+constexpr int64_t k_INI_SCANNER_NORMAL = 0;
+constexpr int64_t k_INI_SCANNER_RAW = 1;
 
 ///////////////////////////////////////////////////////////////////////////////
 // file handle based file operations

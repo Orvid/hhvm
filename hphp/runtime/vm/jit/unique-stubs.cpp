@@ -39,6 +39,7 @@
 #include "hphp/runtime/vm/jit/smashable-instr.h"
 #include "hphp/runtime/vm/jit/stack-offsets.h"
 #include "hphp/runtime/vm/jit/translator-inline.h"
+#include "hphp/runtime/vm/jit/unique-stubs-arm.h"
 #include "hphp/runtime/vm/jit/unique-stubs-x64.h"
 #include "hphp/runtime/vm/jit/vasm-gen.h"
 #include "hphp/runtime/vm/jit/vasm-instr.h"
@@ -210,9 +211,21 @@ TCA emitFCallHelperThunk(CodeBlock& cb) {
 
     unlikelyIfThen(v, vcold, CC_Z, sf, [&] (Vout& v) {
       // A nullptr dest means the callee was intercepted and should be skipped.
-      // Just return to the caller after syncing VM regs.
+      // Make a copy of the current rvmfp(), which belongs to the callee,
+      // before syncing VM regs.
+      auto const callee_fp = v.makeReg();
+      v << copy{rvmfp(), callee_fp};
       loadVMRegs(v);
-      v << phpret{rvmfp(), rvmfp(), php_return_regs(), true};
+
+      // Do a PHP return to the caller---i.e., relative to the callee's frame.
+      // Note that if intercept skips the callee, it tears down its frame but
+      // guarantees that m_savedRip remains valid, so this is safe (and is the
+      // only way to get the return address).
+      //
+      // TODO(#8908075): We've been fishing the m_savedRip out of the callee's
+      // logically-trashed frame for a while now, but we really ought to
+      // respect that the frame is freed and not touch it.
+      v << phpret{callee_fp, rvmfp(), php_return_regs(), true};
     });
 
     // Jump to the func prologue.
@@ -694,6 +707,12 @@ void emitInterpReq(Vout& v, SrcKey sk, FPInvOffset spOff) {
   }
   v << copy{v.cns(sk.pc()), rarg(0)};
   v << jmpi{mcg->tx().uniqueStubs.interpHelper, arg_regs(1)};
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+void enterTCImpl(TCA start, ActRec* stashedAR) {
+  ARCH_SWITCH_CALL(enterTCImpl, start, stashedAR);
 }
 
 ///////////////////////////////////////////////////////////////////////////////

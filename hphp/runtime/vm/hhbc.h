@@ -816,6 +816,7 @@ constexpr int32_t kMaxConcatN = 4;
   O(ContStarted,     NA,               NOV,             ONE(CV),    NF) \
   O(ContKey,         NA,               NOV,             ONE(CV),    NF) \
   O(ContCurrent,     NA,               NOV,             ONE(CV),    NF) \
+  O(ContGetReturn,   NA,               NOV,             ONE(CV),    NF) \
   O(WHResult,        NA,               ONE(CV),         ONE(CV),    NF) \
   O(Await,           ONE(IVA),         ONE(CV),         ONE(CV),    CF) \
   O(IncStat,         TWO(IVA,IVA),     NOV,             NOV,        NF) \
@@ -902,7 +903,15 @@ constexpr bool isValidOpcode(Op op) {
 
 const MInstrInfo& getMInstrInfo(Op op);
 
-MOpFlags getMOpFlags(QueryMOp op);
+inline MOpFlags getQueryMOpFlags(QueryMOp op) {
+  switch (op) {
+    case QueryMOp::CGet:  return MOpFlags::Warn;
+    case QueryMOp::CGetQuiet:
+    case QueryMOp::Isset:
+    case QueryMOp::Empty: return MOpFlags::None;
+  }
+  always_assert(false);
+}
 
 enum AcoldOp {
   OpAcoldStart = Op_count-1,

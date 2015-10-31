@@ -835,7 +835,22 @@ Variant date_sunrise_sunset(int64_t numArgs,
 
 ///////////////////////////////////////////////////////////////////////////////
 
-static const StaticString s_DateTimeZone("DateTimeZone");
+static const StaticString
+  s_DateTimeZone("DateTimeZone"),
+  s_DateTime("DateTime");
+
+#define DATE_ATOM "Y-m-d\\TH:i:sP"
+#define DATE_COOKIE "l, d-M-y H:i:s T"
+#define DATE_ISO8601 "Y-m-d\\TH:i:sO"
+#define DATE_RFC822 "D, d M y H:i:s O"
+#define DATE_RFC850 "l, d-M-y H:i:s T"
+#define DATE_RFC1036 "D, d M y H:i:s O"
+#define DATE_RFC1123 "D, d M Y H:i:s O"
+#define DATE_RFC2822 "D, d M Y H:i:s O"
+#define DATE_RFC3339 "Y-m-d\\TH:i:sP"
+#define DATE_RSS "D, d M Y H:i:s O"
+#define DATE_W3C "Y-m-d\\TH:i:sP"
+
 static class DateTimeExtension final : public Extension {
 public:
   DateTimeExtension() : Extension("date", k_PHP_VERSION.c_str()) { }
@@ -863,6 +878,29 @@ public:
 
     Native::registerNativeDataInfo<DateTimeData>(
       DateTimeData::s_className.get(), Native::NDIFlags::NO_SWEEP);
+
+    HHVM_RC_STR_SAME(DATE_ATOM);
+    HHVM_RCC_STR(DateTime, ATOM, DATE_ATOM);
+    HHVM_RC_STR_SAME(DATE_COOKIE);
+    HHVM_RCC_STR(DateTime, COOKIE, DATE_COOKIE);
+    HHVM_RC_STR_SAME(DATE_ISO8601);
+    HHVM_RCC_STR(DateTime, ISO8601, DATE_ISO8601);
+    HHVM_RC_STR_SAME(DATE_RFC822);
+    HHVM_RCC_STR(DateTime, RFC822, DATE_RFC822);
+    HHVM_RC_STR_SAME(DATE_RFC850);
+    HHVM_RCC_STR(DateTime, RFC850, DATE_RFC850);
+    HHVM_RC_STR_SAME(DATE_RFC1036);
+    HHVM_RCC_STR(DateTime, RFC1036, DATE_RFC1036);
+    HHVM_RC_STR_SAME(DATE_RFC1123);
+    HHVM_RCC_STR(DateTime, RFC1123, DATE_RFC1123);
+    HHVM_RC_STR_SAME(DATE_RFC2822);
+    HHVM_RCC_STR(DateTime, RFC2822, DATE_RFC2822);
+    HHVM_RC_STR_SAME(DATE_RFC3339);
+    HHVM_RCC_STR(DateTime, RFC3339, DATE_RFC3339);
+    HHVM_RC_STR_SAME(DATE_RSS);
+    HHVM_RCC_STR(DateTime, RSS, DATE_RSS);
+    HHVM_RC_STR_SAME(DATE_W3C);
+    HHVM_RCC_STR(DateTime, W3C, DATE_W3C);
 
     HHVM_RCC_INT(DateTimeZone, AFRICA, DateTimeZoneData::AFRICA);
     HHVM_RCC_INT(DateTimeZone, AMERICA, DateTimeZoneData::AMERICA);

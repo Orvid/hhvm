@@ -156,6 +156,7 @@ struct ThreadLocalManager {
     PushTop(&node, sizeof(T));
   }
   template<class F> void scan(F& mark) const;
+  static ThreadLocalManager& GetManager();
 
 private:
   static void PushTop(void* node, size_t size);
@@ -178,8 +179,6 @@ private:
   };
   static void OnThreadExit(void *p);
   pthread_key_t m_key;
-
-  static ThreadLocalManager& GetManager();
 };
 
 ///////////////////////////////////////////////////////////////////////////////

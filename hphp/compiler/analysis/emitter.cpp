@@ -65,7 +65,6 @@
 #include "hphp/compiler/expression/unary_op_expression.h"
 #include "hphp/compiler/expression/yield_expression.h"
 #include "hphp/compiler/expression/await_expression.h"
-#include "hphp/compiler/expression/query_expression.h"
 #include "hphp/compiler/statement/block_statement.h"
 #include "hphp/compiler/statement/break_statement.h"
 #include "hphp/compiler/statement/case_statement.h"
@@ -4820,47 +4819,7 @@ bool EmitterVisitor::visit(ConstructPtr node) {
     resume.set(e);
     return true;
   }
-  case Construct::KindOfQueryExpression: {
-    auto query = static_pointer_cast<QueryExpression>(node);
-    auto args = *query->getQueryArguments();
-    auto numArgs = args.getCount();
-    visit(args[0]);
-    emitConvertToCell(e);
-    auto fpiStart = m_ue.bcPos();
-    StringData* executeQuery = makeStaticString("executeQuery");
-    e.FPushObjMethodD(numArgs+1, executeQuery, ObjMethodOp::NullThrows);
-    {
-      FPIRegionRecorder fpi(this, m_ue, m_evalStack, fpiStart);
-      e.String(query->getQueryString());
-      emitFPass(e, 0, PassByRefKind::ErrorOnCell);
-      auto selectCallback = query->getSelectClosure();
-      if (selectCallback != nullptr) {
-        visit(selectCallback);
-        emitConvertToCell(e);
-      } else {
-        e.Null();
-      }
-      emitFPass(e, 1, PassByRefKind::ErrorOnCell);
-      for (int i = 1; i < numArgs; i++) {
-        visit(args[i]);
-        emitConvertToCell(e);
-        emitFPass(e, i+1, PassByRefKind::ErrorOnCell);
-      }
-    }
-    e.FCall(numArgs+1);
-    e.UnboxR();
-    return true;
-  }
-  case Construct::KindOfExpression:
-  case Construct::KindOfFromClause:
-  case Construct::KindOfLetClause:
-  case Construct::KindOfWhereClause:
-  case Construct::KindOfSelectClause:
-  case Construct::KindOfIntoClause:
-  case Construct::KindOfJoinClause:
-  case Construct::KindOfGroupClause:
-  case Construct::KindOfOrderbyClause:
-  case Construct::KindOfOrdering: {
+  case Construct::KindOfExpression: {
     not_reached();
   }
   }

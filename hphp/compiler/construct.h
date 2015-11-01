@@ -28,6 +28,7 @@ namespace HPHP {
 ///////////////////////////////////////////////////////////////////////////////
 
 struct Variant;
+DECLARE_BOOST_TYPES(Expression);
 DECLARE_BOOST_TYPES(StatementList);
 DECLARE_BOOST_TYPES(IParseHandler);
 DECLARE_BOOST_TYPES(AnalysisResult);
@@ -132,17 +133,7 @@ public:
   x(ClosureExpression,           None) \
   x(YieldExpression,             None) \
   x(AwaitExpression,             None) \
-  x(UserAttribute,               None) \
-  x(QueryExpression,             None) \
-  x(FromClause,                  None) \
-  x(LetClause,                   None) \
-  x(WhereClause,                 None) \
-  x(SelectClause,                None) \
-  x(IntoClause,                  None) \
-  x(JoinClause,                  None) \
-  x(GroupClause,                 None) \
-  x(OrderbyClause,               None) \
-  x(Ordering,                    None)
+  x(UserAttribute,               None)
 
 /**
  * Base class of Expression and Statement.
@@ -298,11 +289,6 @@ public:
 
   void dump(int spc, AnalysisResultConstPtr ar);
   void dumpNode(int spc, AnalysisResultConstPtr ar);
-
-  /**
-   * Generates a serialized Code Model corresponding to this AST.
-   */
-  virtual void outputCodeModel(CodeGenerator &cg) = 0;
 
   /**
    * Called when generating code.

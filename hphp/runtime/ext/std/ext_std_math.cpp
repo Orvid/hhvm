@@ -544,8 +544,8 @@ void StandardExtension::initMath() {
   DCONST(M_SQRT3);
   DCONST(M_SQRTPI);
 
-  DCONST(NAN, NAN);
-  DCONST(INF, INF);
+  DCONST(NAN);
+  DCONST(INF);
 
   HHVM_FE(min);
   HHVM_FE(max);

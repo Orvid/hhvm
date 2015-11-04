@@ -13,25 +13,37 @@
    | license@php.net so we can mail you a copy immediately.               |
    +----------------------------------------------------------------------+
 */
-#include "hphp/util/portability/strptime.h"
 
-#include <iomanip>
-#include <sstream>
+#ifndef incl_HPHP_CLASS_EXPRESSION_H_
+#define incl_HPHP_CLASS_EXPRESSION_H_
 
-extern "C" char* strptime(const char* __restrict s,
-                          const char* __restrict f,
-                          struct tm*  __restrict tm) {
-  // Isn't the C++ standard lib nice? std::get_time is defined such that its
-  // format parameters are the exact same as strptime. Of course, we have to
-  // create a string stream first, and imbue it with the current C locale, and
-  // we also have to make sure we return the right things if it fails, or
-  // if it succeeds, but this is still far simpler an implementation than any
-  // of the versions in any of the C standard libraries.
-  std::istringstream input(s);
-  input.imbue(std::locale(setlocale(LC_ALL, nullptr)));
-  input >> std::get_time(tm, f);
-  if (input.fail()) {
-    return nullptr;
-  }
-  return (char*)(s + input.tellg());
+#include "hphp/compiler/expression/expression.h"
+#include "hphp/compiler/expression/function_call.h"
+#include "hphp/parser/parser.h"
+
+namespace HPHP {
+///////////////////////////////////////////////////////////////////////////////
+
+class ClassExpression;
+using ClassExpressionPtr = std::shared_ptr<ClassExpression>;
+
+class ClassStatement;
+using ClassStatementPtr = std::shared_ptr<ClassStatement>;
+
+class ClassExpression : public FunctionCall {
+public:
+  ClassExpression(EXPRESSION_CONSTRUCTOR_PARAMETERS,
+                  ClassStatementPtr cls,
+                  ExpressionListPtr params);
+
+  DECLARE_BASE_EXPRESSION_VIRTUAL_FUNCTIONS;
+
+  ClassStatementPtr getClass() { return m_cls; }
+
+private:
+  ClassStatementPtr m_cls;
+};
+
+///////////////////////////////////////////////////////////////////////////////
 }
+#endif // incl_HPHP_CLASS_EXPRESSION_H_

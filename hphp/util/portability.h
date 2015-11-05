@@ -238,6 +238,7 @@
 # include "hphp/util/portability/fnmatch.h"
 # include "hphp/util/portability/glob.h"
 # include "hphp/util/portability/rand_r.h"
+# include "hphp/util/portability/strfmon.h"
 # include "hphp/util/portability/strptime.h"
 #endif
 

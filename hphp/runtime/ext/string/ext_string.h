@@ -242,7 +242,7 @@ TypedValue* HHVM_FN(sscanf)(ActRec* ar);
 String HHVM_FUNCTION(chr, const Variant& ascii);
 int64_t HHVM_FUNCTION(ord,
                       const String& str);
-#ifndef _MSC_VER
+#ifdef HAVE_STRFMON
 Variant HHVM_FUNCTION(money_format,
                       const String& format,
                       double number);

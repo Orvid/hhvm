@@ -148,7 +148,7 @@ public:
    */
   static String DecodeFileUrl(const String& input);
   
-#ifndef _MSC_VER
+#ifdef HAVE_STRFMON
   /**
    * Formatting.
    */

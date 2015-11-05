@@ -915,7 +915,7 @@ int64_t HHVM_FUNCTION(ord,
   return (int64_t)(unsigned char)str[0];
 }
 
-#ifndef _MSC_VER
+#ifdef HAVE_STRFMON
 Variant HHVM_FUNCTION(money_format,
                       const String& format,
                       double number) {
@@ -2419,7 +2419,7 @@ public:
     HHVM_FE(sscanf);
     HHVM_FE(chr);
     HHVM_FE(ord);
-#ifndef _MSC_VER
+#ifdef HAVE_STRFMON
     HHVM_FE(money_format);
 #endif
     HHVM_FE(number_format);

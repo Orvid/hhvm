@@ -28,7 +28,8 @@ namespace HPHP {
 static int check_id_allowed(const String& id, long bf) {
   if (bf & DateTimeZoneData::AFRICA && id.find("Africa/") == 0) return 1;
   if (bf & DateTimeZoneData::AMERICA && id.find("America/") == 0) return 1;
-  if (bf & DateTimeZoneData::ANTARCTICA && id.find("Antarctica/") == 0) return 1;
+  if (bf & DateTimeZoneData::ANTARCTICA && id.find("Antarctica/") == 0)
+    return 1;
   if (bf & DateTimeZoneData::ARCTIC && id.find("Arctic/") == 0) return 1;
   if (bf & DateTimeZoneData::ASIA && id.find("Asia/") == 0) return 1;
   if (bf & DateTimeZoneData::ATLANTIC && id.find("Atlantic/") == 0) return 1;

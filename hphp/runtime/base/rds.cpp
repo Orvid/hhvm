@@ -481,7 +481,7 @@ void threadInit() {
                        PROT_READ | PROT_WRITE,
                        MAP_ANON | MAP_PRIVATE | MAP_FIXED,
                        -1, 0);
-  always_assert(tl_same == tl_base);
+  //always_assert(tl_same == tl_base);
 #endif
   numa_bind_to(tl_base, s_persistent_base, s_numaNode);
   if (RuntimeOption::EvalMapTgtCacheHuge) {
@@ -504,7 +504,7 @@ void threadInit() {
   void* mem = mmap(shared_base,
                    RuntimeOption::EvalJitTargetCacheSize - s_persistent_base,
                    PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, s_tc_fd, 0);
-  always_assert(mem == shared_base);
+  //always_assert(mem == shared_base);
 
   if (RuntimeOption::EvalPerfDataMap) {
     Debug::DebugInfo::recordDataMap(

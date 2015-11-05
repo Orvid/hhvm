@@ -198,7 +198,8 @@ void loadImagickConstants() {
   HHVM_RCC_INT(Imagick, COMPOSITE_DIVIDESRC, DivideSrcCompositeOp);
   HHVM_RCC_INT(Imagick, COMPOSITE_MINUSSRC, MinusSrcCompositeOp);
   HHVM_RCC_INT(Imagick, COMPOSITE_DARKENINTENSITY, DarkenIntensityCompositeOp);
-  HHVM_RCC_INT(Imagick, COMPOSITE_LIGHTENINTENSITY, LightenIntensityCompositeOp);
+  HHVM_RCC_INT(Imagick, COMPOSITE_LIGHTENINTENSITY,
+                        LightenIntensityCompositeOp);
 #endif
 
   // MONTAGEMODE constants
@@ -262,7 +263,8 @@ void loadImagickConstants() {
   HHVM_RCC_INT(Imagick, IMGTYPE_TRUECOLOR, TrueColorType);
   HHVM_RCC_INT(Imagick, IMGTYPE_TRUECOLORMATTE, TrueColorMatteType);
   HHVM_RCC_INT(Imagick, IMGTYPE_COLORSEPARATION, ColorSeparationType);
-  HHVM_RCC_INT(Imagick, IMGTYPE_COLORSEPARATIONMATTE, ColorSeparationMatteType);
+  HHVM_RCC_INT(Imagick, IMGTYPE_COLORSEPARATIONMATTE,
+                        ColorSeparationMatteType);
   HHVM_RCC_INT(Imagick, IMGTYPE_OPTIMIZE, OptimizeType);
   HHVM_RCC_INT(Imagick, IMGTYPE_PALETTEBILEVELMATTE, PaletteBilevelMatteType);
   HHVM_RCC_INT(Imagick, IMGTYPE_PALETTE, PaletteType);
@@ -380,7 +382,8 @@ void loadImagickConstants() {
   HHVM_RCC_INT(Imagick, METRIC_PEAKABSOLUTEERROR, PeakAbsoluteErrorMetric);
   HHVM_RCC_INT(Imagick, METRIC_PEAKSIGNALTONOISERATIO,
                            PeakSignalToNoiseRatioMetric);
-  HHVM_RCC_INT(Imagick, METRIC_ROOTMEANSQUAREDERROR, RootMeanSquaredErrorMetric);
+  HHVM_RCC_INT(Imagick, METRIC_ROOTMEANSQUAREDERROR,
+                        RootMeanSquaredErrorMetric);
 
   // PIXEL constants
   HHVM_RCC_INT(Imagick, PIXEL_CHAR, CharPixel);
@@ -408,11 +411,14 @@ void loadImagickConstants() {
   HHVM_RCC_INT(Imagick, EVALUATE_POW, PowEvaluateOperator);
   HHVM_RCC_INT(Imagick, EVALUATE_LOG, LogEvaluateOperator);
   HHVM_RCC_INT(Imagick, EVALUATE_THRESHOLD, ThresholdEvaluateOperator);
-  HHVM_RCC_INT(Imagick, EVALUATE_THRESHOLDBLACK, ThresholdBlackEvaluateOperator);
-  HHVM_RCC_INT(Imagick, EVALUATE_THRESHOLDWHITE, ThresholdWhiteEvaluateOperator);
+  HHVM_RCC_INT(Imagick, EVALUATE_THRESHOLDBLACK,
+                        ThresholdBlackEvaluateOperator);
+  HHVM_RCC_INT(Imagick, EVALUATE_THRESHOLDWHITE,
+                        ThresholdWhiteEvaluateOperator);
   HHVM_RCC_INT(Imagick, EVALUATE_GAUSSIANNOISE, GaussianNoiseEvaluateOperator);
   HHVM_RCC_INT(Imagick, EVALUATE_IMPULSENOISE, ImpulseNoiseEvaluateOperator);
-  HHVM_RCC_INT(Imagick, EVALUATE_LAPLACIANNOISE, LaplacianNoiseEvaluateOperator);
+  HHVM_RCC_INT(Imagick, EVALUATE_LAPLACIANNOISE,
+                        LaplacianNoiseEvaluateOperator);
   HHVM_RCC_INT(Imagick, EVALUATE_MULTIPLICATIVENOISE,
                            MultiplicativeNoiseEvaluateOperator);
   HHVM_RCC_INT(Imagick, EVALUATE_POISSONNOISE, PoissonNoiseEvaluateOperator);
@@ -473,7 +479,8 @@ void loadImagickConstants() {
                            UndefinedVirtualPixelMethod);
   HHVM_RCC_INT(Imagick, VIRTUALPIXELMETHOD_BACKGROUND,
                            BackgroundVirtualPixelMethod);
-  HHVM_RCC_INT(Imagick, VIRTUALPIXELMETHOD_CONSTANT, ConstantVirtualPixelMethod);
+  HHVM_RCC_INT(Imagick, VIRTUALPIXELMETHOD_CONSTANT,
+                        ConstantVirtualPixelMethod);
   HHVM_RCC_INT(Imagick, VIRTUALPIXELMETHOD_EDGE, EdgeVirtualPixelMethod);
   HHVM_RCC_INT(Imagick, VIRTUALPIXELMETHOD_MIRROR, MirrorVirtualPixelMethod);
   HHVM_RCC_INT(Imagick, VIRTUALPIXELMETHOD_TILE, TileVirtualPixelMethod);
@@ -610,7 +617,8 @@ void loadImagickConstants() {
   // DISTORTION constants
   HHVM_RCC_INT(Imagick, DISTORTION_UNDEFINED, UndefinedDistortion);
   HHVM_RCC_INT(Imagick, DISTORTION_AFFINE, AffineDistortion);
-  HHVM_RCC_INT(Imagick, DISTORTION_AFFINEPROJECTION, AffineProjectionDistortion);
+  HHVM_RCC_INT(Imagick, DISTORTION_AFFINEPROJECTION,
+                        AffineProjectionDistortion);
   HHVM_RCC_INT(Imagick, DISTORTION_ARC, ArcDistortion);
   HHVM_RCC_INT(Imagick, DISTORTION_BILINEAR, BilinearDistortion);
   HHVM_RCC_INT(Imagick, DISTORTION_PERSPECTIVE, PerspectiveDistortion);
@@ -653,11 +661,13 @@ void loadImagickConstants() {
 #endif
 
   // SPARSECOLORMETHOD constants
-  HHVM_RCC_INT(Imagick, SPARSECOLORMETHOD_UNDEFINED, UndefinedColorInterpolate);
+  HHVM_RCC_INT(Imagick, SPARSECOLORMETHOD_UNDEFINED,
+                        UndefinedColorInterpolate);
   HHVM_RCC_INT(Imagick, SPARSECOLORMETHOD_BARYCENTRIC,
                            BarycentricColorInterpolate);
   HHVM_RCC_INT(Imagick, SPARSECOLORMETHOD_BILINEAR, BilinearColorInterpolate);
-  HHVM_RCC_INT(Imagick, SPARSECOLORMETHOD_POLYNOMIAL, PolynomialColorInterpolate);
+  HHVM_RCC_INT(Imagick, SPARSECOLORMETHOD_POLYNOMIAL,
+                        PolynomialColorInterpolate);
   HHVM_RCC_INT(Imagick, SPARSECOLORMETHOD_SPEPARDS, ShepardsColorInterpolate);
   HHVM_RCC_INT(Imagick, SPARSECOLORMETHOD_VORONOI, VoronoiColorInterpolate);
 
@@ -684,7 +694,8 @@ void loadImagickConstants() {
   HHVM_RCC_INT(Imagick, DITHERMETHOD_UNDEFINED, UndefinedDitherMethod);
   HHVM_RCC_INT(Imagick, DITHERMETHOD_NO, NoDitherMethod);
   HHVM_RCC_INT(Imagick, DITHERMETHOD_RIEMERSMA, RiemersmaDitherMethod);
-  HHVM_RCC_INT(Imagick, DITHERMETHOD_FLOYDSTEINBERG, FloydSteinbergDitherMethod);
+  HHVM_RCC_INT(Imagick, DITHERMETHOD_FLOYDSTEINBERG,
+                        FloydSteinbergDitherMethod);
 
   // Global constants
   HHVM_RC_INT(MW_AbsoluteIntent, AbsoluteIntent);

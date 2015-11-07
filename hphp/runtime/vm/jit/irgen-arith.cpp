@@ -1206,7 +1206,7 @@ void emitDiv(IRGS& env) {
         if (!divisorVal) {
           gen(env, RaiseWarning,
               cns(env, makeStaticString(Strings::DIVISION_BY_ZERO)));
-          push(env, cns(env, dividendVal / 0.0));
+          push(env, cns(env, ieeeDivByZero(dividendVal)));
         } else if (dividendVal == LLONG_MIN || dividendVal % divisorVal) {
           push(env, cns(env, (double)dividendVal / divisorVal));
         } else {

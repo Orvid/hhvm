@@ -1111,7 +1111,7 @@ public:
 
     try {
       auto sess = vu.unserialize();
-      php_global_set(s__SESSION, std::move(sess.toArray()));
+      php_global_set(s__SESSION, sess.toArray());
     } catch (const ResourceExceededException&) {
       throw;
     } catch (const Exception&) {}

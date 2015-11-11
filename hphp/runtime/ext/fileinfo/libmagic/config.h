@@ -1,3 +1,2 @@
-/* config.h.  Generated from config.h.in by configure.  */
-/* config.h.in.  Generated from configure.ac by autoheader.  */
+// Just forward to the global config header instead.
 #include "hphp/hphp-config.h"

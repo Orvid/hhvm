@@ -18,6 +18,8 @@
 
 #include "hphp/runtime/base/runtime-option.h"
 
+#include <boost/type_traits.hpp>
+
 namespace HPHP {
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -44,7 +46,7 @@ inline Arch arch() {
  * We need to specify the return type explicitly, or else we may drop refs.
  */
 #define ARCH_SWITCH_CALL(func, ...)     \
-  ([&]() -> decltype(auto) {            \
+  ([&]() -> boost::function_traits<decltype(x64::func)>::result_type {  \
     switch (arch()) {                   \
       case Arch::X64:                   \
         return x64::MSVC_GLUE(func, (__VA_ARGS__));  \

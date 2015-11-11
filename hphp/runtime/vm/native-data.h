@@ -193,7 +193,6 @@ typename std::enable_if<
   auto ndisw = &nativeDataInfoSweep<T>;
   auto ndisl = &nativeDataInfoSleep<T>;
   auto ndiw = &nativeDataInfoWakeup<T>;
-  auto ndis = &nativeDataInfoScan<T>;
 
   registerNativeDataInfo(name, sizeof(T),
     &nativeDataInfoInit<T>,
@@ -201,8 +200,7 @@ typename std::enable_if<
     &nativeDataInfoDestroy<T>,
     (flags & NDIFlags::NO_SWEEP) ? nullptr : ndisw,
     hasSleep<T, Variant() const>::value ? ndisl : nullptr,
-    hasWakeup<T, void(const Variant&, ObjectData*)>::value ? ndiw : nullptr,
-    hasScan<T, void(IMarker&)>::value ? ndis : nullptr);
+    hasWakeup<T, void(const Variant&, ObjectData*)>::value ? ndiw : nullptr);
 #else
   registerNativeDataInfo(name, sizeof(T),
                          &nativeDataInfoInit<T>,

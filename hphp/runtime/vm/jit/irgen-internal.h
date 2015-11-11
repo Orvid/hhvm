@@ -415,29 +415,6 @@ inline SSATmp* unbox(IRGS& env, SSATmp* val, Block* exit) {
 }
 
 //////////////////////////////////////////////////////////////////////
-// Type helpers
-
-inline Type relaxToGuardable(Type ty) {
-  assertx(ty <= TGen);
-  ty = ty.unspecialize();
-
-  // ty is unspecialized and we don't support guarding on CountedArr or
-  // StaticArr, so widen any subtypes of Arr to Arr.
-  if (ty <= TArr) return TArr;
-
-  // We can guard on StaticStr but not CountedStr.
-  if (ty <= TCountedStr)     return TStr;
-
-  if (ty <= TBoxedCell)      return TBoxedCell;
-  if (ty.isKnownDataType())  return ty;
-  if (ty <= TUncountedInit)  return TUncountedInit;
-  if (ty <= TUncounted)      return TUncounted;
-  if (ty <= TCell)           return TCell;
-  if (ty <= TGen)            return TGen;
-  not_reached();
-}
-
-//////////////////////////////////////////////////////////////////////
 // Other common helpers
 
 inline bool classIsUnique(const Class* cls) {
@@ -700,7 +677,7 @@ inline SSATmp* pushStLoc(IRGS& env,
 
 inline SSATmp* ldLocAddr(IRGS& env, uint32_t locId) {
   env.irb->constrainLocal(locId, DataTypeSpecific, "LdLocAddr");
-  return gen(env, LdLocAddr, TPtrToFrameGen, LocalId(locId), fp(env));
+  return gen(env, LdLocAddr, LocalId(locId), fp(env));
 }
 
 inline SSATmp* ldStkAddr(IRGS& env, BCSPOffset relOffset) {
@@ -709,7 +686,6 @@ inline SSATmp* ldStkAddr(IRGS& env, BCSPOffset relOffset) {
   return gen(
     env,
     LdStkAddr,
-    TPtrToStkGen,
     IRSPOffsetData { offset },
     sp(env)
   );

@@ -45,18 +45,18 @@ inline Arch arch() {
  *
  * We need to specify the return type explicitly, or else we may drop refs.
  */
-#define ARCH_SWITCH_CALL(func, ...)     \
+#define ARCH_SWITCH_CALL(func, ...)                  \
   ([&]() -> boost::function_traits<decltype(x64::func)>::result_type {  \
-    switch (arch()) {                   \
-      case Arch::X64:                   \
+    switch (arch()) {                                \
+      case Arch::X64:                                \
         return x64::MSVC_GLUE(func, (__VA_ARGS__));  \
-      case Arch::ARM:                   \
+      case Arch::ARM:                                \
         return arm::MSVC_GLUE(func, (__VA_ARGS__));  \
-      case Arch::PPC64:                 \
-        not_implemented();              \
-        break;                          \
-    }                                   \
-    not_reached();                      \
+      case Arch::PPC64:                              \
+        not_implemented();                           \
+        break;                                       \
+    }                                                \
+    not_reached();                                   \
   }())
 
 ///////////////////////////////////////////////////////////////////////////////
